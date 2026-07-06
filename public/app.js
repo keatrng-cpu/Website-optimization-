@@ -19,10 +19,16 @@ async function api(method, path, body) {
 }
 
 function toast(msg, isErr = false) {
+  let stack = $('#toasts');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'toasts';
+    document.body.appendChild(stack);
+  }
   const el = document.createElement('div');
   el.className = 'toast' + (isErr ? ' err' : '');
   el.textContent = msg;
-  document.body.appendChild(el);
+  stack.appendChild(el);
   setTimeout(() => el.remove(), 3200);
 }
 
@@ -109,12 +115,6 @@ async function loadBoot() {
   state.powerups = state.boot.powerups;
 }
 
-function helperChip(id, size = '') {
-  const h = state.helperMap[id];
-  if (!h) return '';
-  return `<span class="row" style="gap:7px"><span class="avatar ${size}" style="background:${h.color}22">${h.emoji}</span><span><b>${h.name}</b> <span class="dim">· ${h.role}</span></span></span>`;
-}
-
 // ---------- router ----------
 const routes = {};
 function navigate() {
@@ -122,10 +122,16 @@ function navigate() {
   const [page, ...rest] = hash.split('/');
   renderSidebar(page);
   const fn = routes[page] || routes.dashboard;
-  const main = $('#main');
-  main.innerHTML = '<div class="page"><p class="muted">Loading…</p></div>';
-  fn(main, rest).catch((e) => {
-    main.innerHTML = `<div class="page"><div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div></div>`;
+  // Each navigation renders into its own container. Switching pages detaches
+  // the old container, so a slower (stale) route can never overwrite the
+  // page the user is actually looking at.
+  const root = document.createElement('div');
+  root.innerHTML = '<div class="page"><p class="muted">Loading…</p></div>';
+  const host = $('#main');
+  host.replaceChildren(root);
+  fn(root, rest).catch((e) => {
+    if (!root.isConnected) return; // superseded by a newer navigation
+    root.innerHTML = `<div class="page"><div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div></div>`;
   });
 }
 window.addEventListener('hashchange', navigate);
@@ -261,7 +267,7 @@ routes.chat = async (main, [helperId, chatId]) => {
           <div class="item ${chat && c.id === chat.id ? 'active' : ''}" data-id="${c.id}">
             <b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.title)}</b>
             <span class="dim">${c.messageCount} messages · ${timeAgo(c.createdAt)}</span>
-          </div>`).join('') : '<div class="dim" style="padding:10px">No conversations yet.</div>'}
+          </div>`).join('') : '<div class="dim chat-empty" style="padding:10px">No conversations yet.</div>'}
       </div>
       <div class="chat-panel">
         <div class="chat-msgs" id="msgs">
@@ -276,7 +282,10 @@ routes.chat = async (main, [helperId, chatId]) => {
     </div>
   </div>`;
 
-  const msgs = $('#msgs');
+  const msgs = $('#msgs', main);
+  const input = $('#input', main);
+  const sendBtn = $('#send', main);
+  const chatList = $('#chatList', main);
   function renderMsgs() {
     if (!chat) return;
     msgs.innerHTML = chat.messages.map((m) => `
@@ -288,42 +297,50 @@ routes.chat = async (main, [helperId, chatId]) => {
   }
   renderMsgs();
 
-  $('#chatList').addEventListener('click', (e) => {
+  chatList.addEventListener('click', (e) => {
     const item = e.target.closest('.item');
     if (item) location.hash = `#/chat/${helperId}/${item.dataset.id}`;
   });
-  $('#newChat').onclick = () => { location.hash = `#/chat/${helperId}`; };
+  $('#newChat', main).onclick = () => { location.hash = `#/chat/${helperId}`; };
 
   async function send() {
-    const input = $('#input');
     const content = input.value.trim();
     if (!content) return;
     input.value = '';
-    $('#send').disabled = true;
+    sendBtn.disabled = true;
     try {
       if (!chat) chat = await api('POST', '/api/chats', { helperId });
       chat.messages.push({ role: 'user', content, at: Date.now() });
       renderMsgs();
-      msgs.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="typing"><div class="typing"><i></i><i></i><i></i></div></div>`);
+      msgs.insertAdjacentHTML('beforeend', `<div class="msg assistant" data-typing><div class="typing"><i></i><i></i><i></i></div></div>`);
       msgs.scrollTop = msgs.scrollHeight;
       const { reply } = await api('POST', `/api/chats/${chat.id}/messages`, { content });
-      $('#typing')?.remove();
+      $('[data-typing]', msgs)?.remove();
       chat.messages.push(reply);
       renderMsgs();
-      if (chat.messages.length === 2) history.replaceState(null, '', `#/chat/${helperId}/${chat.id}`);
+      if (chat.messages.length === 2) {
+        history.replaceState(null, '', `#/chat/${helperId}/${chat.id}`);
+        // show the new conversation in the sidebar list immediately
+        $('.chat-empty', chatList)?.remove();
+        chatList.insertAdjacentHTML('afterbegin', `
+          <div class="item active" data-id="${chat.id}">
+            <b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(content.slice(0, 60))}</b>
+            <span class="dim">2 messages · just now</span>
+          </div>`);
+      }
     } catch (e) {
-      $('#typing')?.remove();
+      $('[data-typing]', msgs)?.remove();
       toast(e.message, true);
     } finally {
-      $('#send').disabled = false;
-      $('#input').focus();
+      sendBtn.disabled = false;
+      input.focus();
     }
   }
-  $('#send').onclick = send;
-  $('#input').addEventListener('keydown', (e) => {
+  sendBtn.onclick = send;
+  input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
-  $('#input').focus();
+  input.focus();
 };
 
 routes.brain = async (main) => {
@@ -729,14 +746,15 @@ async function siteEditor(main, siteId) {
     </div>
   </div>`;
 
-  const refresh = () => { $('#preview').src = `/api/sites/${site.id}/preview?t=${Date.now()}`; };
-  $('#palette').onchange = async (e) => { await api('PATCH', `/api/sites/${siteId}`, { palette: e.target.value }); refresh(); };
-  $('#toggle').onclick = async () => { await api('PATCH', `/api/sites/${siteId}`, { published: !site.published }); navigate(); };
-  $('#regen').onclick = async (e) => {
+  const frame = $('#preview', main);
+  const refresh = () => { frame.src = `/api/sites/${site.id}/preview?t=${Date.now()}`; };
+  $('#palette', main).onchange = async (e) => { await api('PATCH', `/api/sites/${siteId}`, { palette: e.target.value }); refresh(); };
+  $('#toggle', main).onclick = async () => { await api('PATCH', `/api/sites/${siteId}`, { published: !site.published }); navigate(); };
+  $('#regen', main).onclick = async (e) => {
     e.target.disabled = true; e.target.textContent = '⏳ Writing…';
     await api('POST', `/api/sites/${siteId}/generate`); navigate();
   };
-  $('#saveSections').onclick = async () => {
+  $('#saveSections', main).onclick = async () => {
     const sections = structuredClone(site.sections);
     main.querySelectorAll('[data-sec]').forEach((el) => {
       const sec = sections[Number(el.dataset.sec)];
@@ -762,7 +780,7 @@ routes.marketing = async (main, [tab = 'calendar']) => {
     </div>
     <div id="tabBody"></div>
   </div>`;
-  const body = $('#tabBody');
+  const body = $('#tabBody', main);
 
   if (tab === 'calendar') {
     const sorted = [...calendar].sort((a, b) => a.date.localeCompare(b.date));

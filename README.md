@@ -6,12 +6,25 @@ scheduled automations, a real website builder with live publishing, an SEO
 auditor, a marketing hub, and privacy-first analytics. All running entirely on
 your machine, with **zero dependencies** and **zero data leaving your computer**.
 
+## Quick start (2 minutes)
+
+HELIX is a **local app** — it runs on *your* computer, and `http://localhost:4310`
+only works in a browser **on the machine where it's running**. (If you click a
+localhost link on a device that isn't running HELIX, Safari/Chrome will say it
+can't connect to the server — that's expected, not a bug.)
+
+1. **Install Node.js** (version 18 or newer) from [nodejs.org](https://nodejs.org) if you don't have it.
+2. **Download this repository** (green "Code" button → Download ZIP, then unzip — or `git clone`).
+3. **In a terminal, inside the folder:**
+
 ```
-npm start          # that's it — open http://localhost:4310
+npm start
 ```
 
-No account. No subscription. No API key required (though you can plug one in).
-Requires only Node.js ≥ 18.
+Then open **http://localhost:4310** in your browser. That's it — no account,
+no subscription, no API key required (though you can plug one in), no
+`npm install` even. If port 4310 is busy, HELIX automatically picks the next
+free port and prints the correct link.
 
 ---
 
@@ -112,3 +125,17 @@ npm test         # 12 end-to-end tests over the real HTTP server
 
 All state lives in `data/db.json` (gitignored). Delete it for a factory reset,
 or use **Settings → Export/Import** for backups.
+
+## Troubleshooting
+
+- **"Safari can't connect to the server" / "This site can't be reached"** —
+  HELIX isn't running on this machine. Open a terminal in the project folder,
+  run `npm start`, and use the URL it prints. localhost links never work from
+  another device.
+- **`node: command not found`** — install Node.js ≥ 18 from [nodejs.org](https://nodejs.org).
+- **Wrong or stale data** — stop the server and delete `data/db.json` for a
+  factory reset (export a backup first if you want one).
+- **A published site 404s** — check it's marked **live** in Website Studio;
+  unpublished sites intentionally return 404.
+- **Note on backups**: the export file contains everything, including any API
+  key you saved in Settings — treat it like a password file.

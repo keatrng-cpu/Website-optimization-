@@ -198,6 +198,9 @@ export function createApp({ dataDir } = {}) {
     const i = S().documents.findIndex((d) => d.id === id);
     if (i === -1) return notFound(res);
     S().documents.splice(i, 1);
+    // clear dangling references so the UI never links to a deleted deliverable
+    for (const t of S().tasks) if (t.deliverableId === id) t.deliverableId = null;
+    for (const n of S().inbox) if (n.documentId === id) n.documentId = null;
     store.save();
     sendJSON(res, 200, { ok: true });
   });
@@ -357,8 +360,11 @@ export function createApp({ dataDir } = {}) {
   });
   // Generate a week of posts.
   router.post('/api/calendar/generate', async (req, res) => {
-    const { platforms = ['LinkedIn', 'Instagram', 'X'], startDate } = await readBody(req);
-    const start = startDate ? new Date(startDate) : new Date();
+    const body = await readBody(req);
+    const platforms = Array.isArray(body.platforms) && body.platforms.length
+      ? body.platforms.map(String) : ['LinkedIn', 'Instagram', 'X'];
+    let start = body.startDate ? new Date(body.startDate) : new Date();
+    if (Number.isNaN(start.getTime())) start = new Date();
     const created = [];
     const angles = [
       'a customer pain point and how you solve it',
@@ -463,15 +469,25 @@ export function createApp({ dataDir } = {}) {
   });
   router.post('/api/import', async (req, res) => {
     const body = await readBody(req, 50 * 1024 * 1024);
-    if (!body || typeof body !== 'object' || !body.brain) return bad(res, 'not a valid HELIX export');
+    if (!body || typeof body !== 'object' || !body.brain || typeof body.brain !== 'object') {
+      return bad(res, 'not a valid HELIX export');
+    }
     store.replace(body);
+    // stale nextRun timestamps from a backup would fire every automation at once
+    for (const a of S().automations) {
+      if (a && a.schedule) a.nextRun = computeNextRun(a.schedule);
+    }
+    store.save();
     sendJSON(res, 200, { ok: true });
   });
 
   // ---------- http server ----------
   function serveStatic(res, filePath) {
     const resolved = path.resolve(PUBLIC_DIR, filePath);
-    if (!resolved.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end(); return true; }
+    // require the separator so a sibling dir like "public-evil" can't match
+    if (resolved !== PUBLIC_DIR && !resolved.startsWith(PUBLIC_DIR + path.sep)) {
+      res.writeHead(403); res.end(); return true;
+    }
     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return false;
     res.writeHead(200, { 'Content-Type': MIME[path.extname(resolved)] || 'application/octet-stream' });
     res.end(fs.readFileSync(resolved));
@@ -505,10 +521,12 @@ export function createApp({ dataDir } = {}) {
 
       // SPA static
       if (serveStatic(res, pathname === '/' ? 'index.html' : pathname.slice(1))) return;
-      serveStatic(res, 'index.html'); // SPA fallback
+      if (serveStatic(res, 'index.html')) return; // SPA fallback
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('not found');
     } catch (err) {
-      console.error(`[http] ${req.method} ${pathname}:`, err);
-      if (!res.headersSent) sendJSON(res, err.message?.includes('JSON') ? 400 : 500, { error: err.message || 'internal error' });
+      console.error(`[http] ${req.method} ${pathname}:`, err.message);
+      if (!res.headersSent) sendJSON(res, err.statusCode || 500, { error: err.message || 'internal error' });
       else res.end();
     }
   });
@@ -520,11 +538,27 @@ export function createApp({ dataDir } = {}) {
 }
 
 // Direct launch
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const port = Number(process.env.PORT) || 4310;
+if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+  const preferred = Number(process.env.PORT) || 4310;
   const { server } = createApp();
-  server.listen(port, () => {
-    console.log(`\n  ⬢ HELIX is running`);
-    console.log(`  → Open http://localhost:${port}\n`);
+
+  let attempts = 0;
+  server.once('listening', () => {
+    const { port } = server.address();
+    console.log('\n  ⬢ HELIX is running');
+    console.log(`  → Open http://localhost:${port} in a browser ON THIS MACHINE`);
+    console.log('  → Your data lives in data/db.json — press Ctrl+C to stop\n');
   });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && attempts < 10) {
+      attempts += 1;
+      const next = preferred + attempts;
+      console.log(`  Port ${preferred + attempts - 1} is busy — trying ${next}…`);
+      setTimeout(() => server.listen(next), 100);
+    } else {
+      console.error(`\n  ✖ HELIX could not start: ${err.message}\n`);
+      process.exit(1);
+    }
+  });
+  server.listen(preferred);
 }

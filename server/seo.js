@@ -98,6 +98,15 @@ export async function fetchAndAudit(url) {
     headers: { 'user-agent': 'HELIX-SEO-Audit/1.0' },
   });
   if (!res.ok) throw new Error(`fetch failed: HTTP ${res.status}`);
-  const html = await res.text();
+  // Read at most ~3MB — enough for any real page's <head> and content checks.
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let html = '';
+  while (html.length < 3_000_000) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    html += decoder.decode(value, { stream: true });
+  }
+  reader.cancel().catch(() => {});
   return auditHTML(html, url);
 }

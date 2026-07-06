@@ -11,8 +11,10 @@ export function computeNextRun(schedule, from = Date.now()) {
     const mins = Math.max(1, Number(schedule.minutes) || 60);
     return from + mins * 60_000;
   }
-  // daily at HH:MM local time
-  const [h, m] = String(schedule.time || '09:00').split(':').map((n) => parseInt(n, 10) || 0);
+  // daily at HH:MM local time (clamped to a valid clock time)
+  const [rawH, rawM] = String(schedule.time || '09:00').split(':').map((n) => parseInt(n, 10) || 0);
+  const h = Math.min(23, Math.max(0, rawH));
+  const m = Math.min(59, Math.max(0, rawM));
   const d = new Date(from);
   d.setHours(h, m, 0, 0);
   if (d.getTime() <= from) d.setDate(d.getDate() + 1);
@@ -41,6 +43,7 @@ export async function runAutomation(store, automation) {
     createdAt: Date.now(),
   };
   s.documents.unshift(doc);
+  if (s.inbox.length >= 200) s.inbox.length = 199; // keep the inbox bounded
   s.inbox.unshift({
     id: uid(),
     title: `${helper.name} finished “${automation.name}”`,

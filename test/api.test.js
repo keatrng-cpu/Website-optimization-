@@ -253,6 +253,57 @@ test('export / import round-trip preserves data', async () => {
   assert.equal(reject.status, 400);
 });
 
+test('hardening: path traversal never leaks files outside public/', async () => {
+  for (const p of ['/%2e%2e/server/store.js', '/..%2fserver%2fstore.js', '/../server/store.js', '/....//server/store.js']) {
+    const res = await fetch(base + p);
+    const text = await res.text();
+    assert.ok(!text.includes('createStore'), `${p} must not serve server source`);
+  }
+});
+
+test('hardening: malformed percent-encoding does not 500', async () => {
+  const res = await fetch(base + '/api/tasks/%zz', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(res.status, 404);
+});
+
+test('hardening: calendar generate survives empty platforms and bad dates', async () => {
+  const r = await api('POST', '/api/calendar/generate', { platforms: [], startDate: 'not-a-date' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.length, 7);
+  assert.ok(r.data.every((p) => p.platform && p.date.match(/^\d{4}-\d{2}-\d{2}$/)));
+});
+
+test('hardening: deleting a document clears task deliverable links', async () => {
+  const t = await api('POST', '/api/tasks', { title: 'link test', helperId: 'vizzy' });
+  const run = await api('POST', `/api/tasks/${t.data.id}/run`);
+  await api('DELETE', `/api/documents/${run.data.document.id}`);
+  const tasks = await api('GET', '/api/tasks');
+  assert.equal(tasks.data.find((x) => x.id === t.data.id).deliverableId, null);
+  await api('DELETE', `/api/tasks/${t.data.id}`);
+});
+
+test('hardening: import normalizes malformed shapes and recomputes schedules', async () => {
+  const exp = await api('GET', '/api/export');
+  // corrupt array fields and backdate an automation
+  const mangled = { ...exp.data, chats: 'nope', tasks: 42 };
+  mangled.automations = [{
+    id: 'x1', name: 'stale', prompt: 'p', helperId: 'vizzy',
+    schedule: { type: 'interval', minutes: 60 }, enabled: true,
+    lastRun: null, nextRun: 123, runs: 0, createdAt: 123,
+  }];
+  const imp = await api('POST', '/api/import', mangled);
+  assert.equal(imp.status, 200);
+  const chats = await api('GET', '/api/chats');
+  assert.deepEqual(chats.data, [], 'non-array chats must reset to empty');
+  const autos = await api('GET', '/api/automations');
+  assert.ok(autos.data[0].nextRun > Date.now(), 'imported nextRun must be recomputed');
+  // a string brain is rejected outright
+  const rejected = await api('POST', '/api/import', { brain: 'not an object' });
+  assert.equal(rejected.status, 400);
+  // restore original state
+  await api('POST', '/api/import', exp.data);
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

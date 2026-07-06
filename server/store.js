@@ -44,10 +44,24 @@ export function createStore(dataDir) {
   const file = path.join(dataDir, 'db.json');
   let state = DEFAULTS();
 
+  // Coerce arbitrary input into a valid state shape: every array field must be
+  // an array and every object field an object, or later code falls over.
+  function normalize(input) {
+    const base = DEFAULTS();
+    const next = {};
+    for (const [key, def] of Object.entries(base)) {
+      const val = input?.[key];
+      if (Array.isArray(def)) next[key] = Array.isArray(val) ? val : def;
+      else if (def && typeof def === 'object') {
+        next[key] = { ...def, ...(val && typeof val === 'object' && !Array.isArray(val) ? val : {}) };
+      } else next[key] = val ?? def;
+    }
+    return next;
+  }
+
   if (fs.existsSync(file)) {
     try {
-      const loaded = JSON.parse(fs.readFileSync(file, 'utf8'));
-      state = { ...DEFAULTS(), ...loaded, settings: { ...DEFAULTS().settings, ...(loaded.settings || {}) } };
+      state = normalize(JSON.parse(fs.readFileSync(file, 'utf8')));
     } catch {
       // corrupted db: keep defaults, back the old file up
       try { fs.renameSync(file, file + '.corrupt-' + Date.now()); } catch {}
@@ -65,7 +79,7 @@ export function createStore(dataDir) {
     timer = setTimeout(() => { timer = null; try { flush(); } catch (e) { console.error('store flush failed:', e.message); } }, 150);
   }
   function replace(next) {
-    state = { ...DEFAULTS(), ...next, settings: { ...DEFAULTS().settings, ...(next.settings || {}) } };
+    state = normalize(next);
     save();
   }
 

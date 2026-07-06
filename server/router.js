@@ -15,8 +15,11 @@ export function createRouter() {
       let ok = true;
       for (let i = 0; i < r.parts.length; i++) {
         const p = r.parts[i];
-        if (p.startsWith(':')) params[p.slice(1)] = decodeURIComponent(segs[i]);
-        else if (p !== segs[i]) { ok = false; break; }
+        if (p.startsWith(':')) {
+          // malformed percent-encoding must not crash the request
+          try { params[p.slice(1)] = decodeURIComponent(segs[i]); }
+          catch { params[p.slice(1)] = segs[i]; }
+        } else if (p !== segs[i]) { ok = false; break; }
       }
       if (ok) return { handler: r.handler, params };
     }
@@ -39,14 +42,24 @@ export function readBody(req, limit = 5 * 1024 * 1024) {
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > limit) { reject(new Error('payload too large')); req.destroy(); return; }
+      if (size > limit) {
+        const err = new Error('payload too large');
+        err.statusCode = 413;
+        reject(err);
+        req.destroy();
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8');
       if (!raw) return resolve({});
       try { resolve(JSON.parse(raw)); }
-      catch { reject(new Error('invalid JSON body')); }
+      catch {
+        const err = new Error('invalid JSON body');
+        err.statusCode = 400;
+        reject(err);
+      }
     });
     req.on('error', reject);
   });
