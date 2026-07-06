@@ -1,0 +1,15 @@
+{
+  "name": "helix",
+  "version": "1.0.0",
+  "description": "HELIX — local-first AI business suite: 12 AI employees, Brain knowledge base, power-ups, automations, website studio, SEO auditor, marketing hub, and analytics. Zero dependencies.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

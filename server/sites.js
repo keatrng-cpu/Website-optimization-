@@ -1,0 +1,172 @@
+// Website Studio: section-based site model rendered to a real, standalone,
+// responsive HTML page served live at /sites/:slug.
+
+export const PALETTES = {
+  midnight: { bg: '#0b1020', surface: '#141a2e', text: '#e8ecf7', muted: '#93a0bf', accent: '#6366f1', accent2: '#22d3ee' },
+  daylight: { bg: '#ffffff', surface: '#f4f6fb', text: '#101828', muted: '#5b6474', accent: '#2563eb', accent2: '#7c3aed' },
+  forest:   { bg: '#0c1512', surface: '#14211c', text: '#e7f2ec', muted: '#8fa89c', accent: '#22c55e', accent2: '#a3e635' },
+  sunset:   { bg: '#180f0f', surface: '#241615', text: '#f7ece8', muted: '#bf9a93', accent: '#f97316', accent2: '#f43f5e' },
+  mono:     { bg: '#0a0a0a', surface: '#161616', text: '#f5f5f5', muted: '#9c9c9c', accent: '#fafafa', accent2: '#a3a3a3' },
+};
+
+export function slugify(name) {
+  return String(name).toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'site';
+}
+
+export function defaultSections(brain) {
+  const name = brain.businessName || 'Your Business';
+  return [
+    { type: 'hero', headline: brain.tagline || `Welcome to ${name}`, sub: brain.description || 'We help you get results, faster.', cta: 'Get started', ctaLink: '#contact' },
+    {
+      type: 'features', title: 'Why choose us', items: [
+        { icon: '⚡', title: 'Fast', text: 'Results in days, not months.' },
+        { icon: '🎯', title: 'Focused', text: 'Built around exactly what you need.' },
+        { icon: '🤝', title: 'Personal', text: 'Real support from real people.' },
+      ],
+    },
+    { type: 'about', title: `About ${name}`, text: brain.description || 'Tell your story here — who you are, who you serve, and why it matters.' },
+    {
+      type: 'testimonials', title: 'What customers say', items: [
+        { quote: 'Exactly what we needed — professional and fast.', author: 'A happy customer' },
+        { quote: 'The results speak for themselves.', author: 'A repeat client' },
+      ],
+    },
+    { type: 'cta', headline: 'Ready to get started?', sub: 'Reach out today — it takes two minutes.', cta: 'Contact us', ctaLink: '#contact' },
+    { type: 'contact', title: 'Contact', email: '', phone: '', address: brain.location || '' },
+  ];
+}
+
+const esc = (s) => String(s ?? '')
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+
+const RENDERERS = {
+  hero: (s) => `
+  <header class="hero" id="top">
+    <h1>${esc(s.headline)}</h1>
+    <p>${esc(s.sub)}</p>
+    ${s.cta ? `<a class="btn" href="${esc(s.ctaLink || '#contact')}">${esc(s.cta)}</a>` : ''}
+  </header>`,
+  features: (s) => `
+  <section class="features">
+    <h2>${esc(s.title)}</h2>
+    <div class="grid">
+      ${(s.items || []).map((i) => `<div class="card"><div class="icon">${esc(i.icon)}</div><h3>${esc(i.title)}</h3><p>${esc(i.text)}</p></div>`).join('')}
+    </div>
+  </section>`,
+  about: (s) => `
+  <section class="about">
+    <h2>${esc(s.title)}</h2>
+    <p>${esc(s.text)}</p>
+  </section>`,
+  testimonials: (s) => `
+  <section class="testimonials">
+    <h2>${esc(s.title)}</h2>
+    <div class="grid">
+      ${(s.items || []).map((i) => `<figure class="card"><blockquote>“${esc(i.quote)}”</blockquote><figcaption>— ${esc(i.author)}</figcaption></figure>`).join('')}
+    </div>
+  </section>`,
+  cta: (s) => `
+  <section class="cta-band">
+    <h2>${esc(s.headline)}</h2>
+    <p>${esc(s.sub)}</p>
+    ${s.cta ? `<a class="btn" href="${esc(s.ctaLink || '#contact')}">${esc(s.cta)}</a>` : ''}
+  </section>`,
+  contact: (s) => `
+  <section class="contact" id="contact">
+    <h2>${esc(s.title)}</h2>
+    <ul>
+      ${s.email ? `<li>📧 <a href="mailto:${esc(s.email)}">${esc(s.email)}</a></li>` : ''}
+      ${s.phone ? `<li>📞 ${esc(s.phone)}</li>` : ''}
+      ${s.address ? `<li>📍 ${esc(s.address)}</li>` : ''}
+    </ul>
+  </section>`,
+};
+
+export function renderSite(site, brain) {
+  const p = PALETTES[site.palette] || PALETTES.midnight;
+  const name = brain.businessName || site.name;
+  const title = `${site.name}${brain.tagline ? ' — ' + brain.tagline : ''}`.slice(0, 60);
+  const desc = (brain.description || `${name}: ${brain.tagline || 'quality you can trust.'}`).slice(0, 158);
+  const body = (site.sections || []).map((s) => (RENDERERS[s.type] || (() => ''))(s)).join('\n');
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:type" content="website">
+<style>
+  :root{--bg:${p.bg};--surface:${p.surface};--text:${p.text};--muted:${p.muted};--accent:${p.accent};--accent2:${p.accent2}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.6}
+  main{max-width:960px;margin:0 auto;padding:0 24px}
+  h1{font-size:clamp(2rem,6vw,3.5rem);line-height:1.1;letter-spacing:-.02em}
+  h2{font-size:clamp(1.4rem,4vw,2rem);margin-bottom:20px;letter-spacing:-.01em}
+  p{color:var(--muted)}
+  .hero{padding:96px 0 72px;text-align:center}
+  .hero p{font-size:1.15rem;margin:20px auto 32px;max-width:600px}
+  .btn{display:inline-block;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:600;transition:transform .15s}
+  .btn:hover{transform:translateY(-2px)}
+  section{padding:56px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
+  .card{background:var(--surface);border-radius:16px;padding:28px}
+  .card .icon{font-size:1.8rem;margin-bottom:12px}
+  .card h3{margin-bottom:8px}
+  blockquote{font-size:1.05rem;color:var(--text);margin-bottom:12px}
+  figcaption{color:var(--muted);font-size:.9rem}
+  .cta-band{text-align:center;background:var(--surface);border-radius:24px;padding:56px 32px;margin:32px 0}
+  .cta-band p{margin:12px 0 28px}
+  .contact ul{list-style:none}
+  .contact li{margin:8px 0}
+  .contact a{color:var(--accent)}
+  footer{text-align:center;padding:40px 0;color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+<main>
+${body}
+</main>
+<footer>© ${new Date().getFullYear()} ${esc(name)} · Built with HELIX</footer>
+</body>
+</html>`;
+}
+
+// Parse the AI's JSON site-content response defensively.
+export function parseSiteContent(text) {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch { return null; }
+}
+
+export function siteGenPrompt(site, brain) {
+  return `Generate website copy for "${site.name}". Respond with ONLY a JSON object shaped exactly like:
+{"hero":{"headline":"","sub":"","cta":""},"features":{"title":"","items":[{"icon":"","title":"","text":""},{"icon":"","title":"","text":""},{"icon":"","title":"","text":""}]},"about":{"title":"","text":""},"cta":{"headline":"","sub":"","cta":""}}
+Make it specific to the business, punchy, and conversion-focused. No markdown, no commentary.`;
+}
+
+export function applyGeneratedContent(site, content) {
+  for (const sec of site.sections || []) {
+    const c = content[sec.type];
+    if (!c) continue;
+    if (sec.type === 'hero' || sec.type === 'cta') {
+      if (c.headline) sec.headline = String(c.headline);
+      if (c.sub) sec.sub = String(c.sub);
+      if (c.cta) sec.cta = String(c.cta);
+    } else if (sec.type === 'features') {
+      if (c.title) sec.title = String(c.title);
+      if (Array.isArray(c.items) && c.items.length) {
+        sec.items = c.items.slice(0, 6).map((i) => ({
+          icon: String(i.icon || '✨'), title: String(i.title || ''), text: String(i.text || ''),
+        }));
+      }
+    } else if (sec.type === 'about') {
+      if (c.title) sec.title = String(c.title);
+      if (c.text) sec.text = String(c.text);
+    }
+  }
+}
