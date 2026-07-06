@@ -6,6 +6,17 @@ scheduled automations, a real website builder with live publishing, an SEO
 auditor, a marketing hub, and privacy-first analytics. All running entirely on
 your machine, with **zero dependencies** and **zero data leaving your computer**.
 
+## Try it instantly — no install
+
+Want to see it before installing anything? Open **[`demo/helix-demo.html`](demo/helix-demo.html)**
+— the entire app compiled into a single HTML file that runs completely in your
+browser (download it, then double-click). Every feature works via the built-in
+offline engine, and your data persists in the browser. The installable version
+below adds real AI providers (Anthropic/OpenAI/Ollama), live site hosting at
+real URLs, and external-URL SEO audits.
+
+Rebuild the demo after changing the app with `node demo/build.mjs`.
+
 ## Quick start (2 minutes)
 
 HELIX is a **local app** — it runs on *your* computer, and `http://localhost:4310`
