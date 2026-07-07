@@ -227,7 +227,58 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
 .list-row:last-child { border-bottom: none; }
 .card.pad0 { padding: 0; overflow: hidden; }
 
+/* ---------- learn pages (About / How-to) ---------- */
+.learn .eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--accent2); margin-bottom: 10px;
+}
+.hero-band {
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(34,211,238,.10), transparent 55%),
+    radial-gradient(120% 140% at 0% 20%, rgba(99,102,241,.16), transparent 55%),
+    var(--surface);
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 40px 36px; margin-bottom: 30px;
+}
+.hero-band h1 { font-size: clamp(24px, 4vw, 36px); line-height: 1.1; letter-spacing: -.025em; max-width: 16ch; text-wrap: balance; }
+.hero-band .lede { color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 62ch; margin: 16px 0 22px; }
+.hero-band .lede em { color: var(--text); font-style: normal; font-weight: 600; }
+.learn-section { margin-bottom: 34px; }
+.learn-section > h2 {
+  font-size: 19px; letter-spacing: -.01em; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.learn-ic {
+  font-size: 22px; width: 42px; height: 42px; flex: none;
+  display: grid; place-items: center; border-radius: 11px;
+  background: var(--surface2);
+}
+.learn .card b { font-size: 14.5px; }
+.learn .card p { font-size: 13px; line-height: 1.55; }
+.func-card { display: flex; flex-direction: column; justify-content: space-between; gap: 14px; color: inherit; transition: border-color .15s, transform .12s; }
+.func-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.func-go { font-size: 12.5px; font-weight: 600; color: var(--accent2); }
+.tip-card { transition: border-color .15s; }
+.tip-card:hover { border-color: var(--accent2); }
+.cta-learn { text-align: center; padding: 34px 28px;
+  background: radial-gradient(120% 160% at 50% 0%, rgba(99,102,241,.14), transparent 60%), var(--surface); }
+.steps { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.step {
+  display: flex; gap: 16px; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 18px 20px;
+}
+.step-n {
+  font-size: 18px; font-weight: 800; flex: none;
+  color: var(--accent2); font-variant-numeric: tabular-nums;
+  min-width: 34px; letter-spacing: -.02em;
+}
+.step-body b { font-size: 15px; }
+.step-body p { color: var(--muted); font-size: 13px; margin: 6px 0 12px; line-height: 1.55; }
+
 @media (max-width: 860px) {
+  .hero-band { padding: 28px 20px; }
+  .step { padding: 15px 16px; gap: 12px; }
   .mobile-top {
     display: flex; align-items: center; gap: 12px;
     padding: 10px 14px; background: var(--bg2);
@@ -1940,6 +1991,9 @@ const NAV = [
   { id: 'seo', icon: '🔍', name: 'SEO' },
   { id: 'automations', icon: '🔁', name: 'Automations' },
   { id: 'analytics', icon: '📊', name: 'Analytics' },
+  { label: 'Learn' },
+  { id: 'about', icon: '✨', name: 'About HELIX' },
+  { id: 'howto', icon: '🧭', name: 'How-to & Tips' },
   { label: 'System' },
   { id: 'settings', icon: '⚙️', name: 'Settings' },
 ];
@@ -2801,6 +2855,134 @@ routes.settings = async (main) => {
       location.hash = '#/dashboard';
     } catch (err) { toast('Import failed: ' + err.message, true); }
   };
+};
+
+routes.about = async (main) => {
+  await loadBoot();
+  const FUNCTIONS = [
+    { icon: '🧠', name: 'Brain', href: '#/brain', text: 'The single source of truth for your business. Fill it in once — every teammate, power-up, website, and automation reads from it, so everything stays on-brand without you repeating yourself.' },
+    { icon: '👥', name: 'AI Team', href: '#/helpers', text: 'Twelve specialists — copy, sales, SEO, support, social, data and more — each briefed on your business, ready to think alongside you in plain conversation.' },
+    { icon: '⚡', name: 'Power-ups', href: '#/powerups', text: 'One click turns a blank page into a finished deliverable: a content plan, a sales script, a hiring kit, an SEO brief — drafted by the right specialist.' },
+    { icon: '✅', name: 'Tasks', href: '#/tasks', text: 'A board where you can hand a job to a teammate and they actually complete it, attaching the finished work — not just advice about it.' },
+    { icon: '🔁', name: 'Automations', href: '#/automations', text: 'Standing orders that run on their own schedule. Your team keeps working while you sleep; results appear in your inbox.' },
+    { icon: '🌐', name: 'Website Studio', href: '#/sites', text: 'Describe your business and get a real, publishable website in seconds — then edit every section with a live preview.' },
+    { icon: '📣', name: 'Marketing', href: '#/marketing', text: 'A month of on-brand social posts and email campaigns, generated and organized so you never stare at an empty calendar.' },
+    { icon: '🔍', name: 'SEO', href: '#/seo', text: 'Honest, weighted on-page audits with concrete fixes — score your own sites or any URL and know exactly what to improve.' },
+    { icon: '📊', name: 'Analytics', href: '#/analytics', text: 'Private, cookie-free pageview tracking for the sites you publish, so growth is something you can see.' },
+  ];
+  main.innerHTML = `<div class="page learn">
+    <div class="hero-band">
+      <div class="eyebrow">The autonomous business ecosystem</div>
+      <h1>Your ideas, brought to life — by a team that never clocks out.</h1>
+      <p class="lede">HELIX exists for one reason: the distance between <em>“I have an idea”</em> and <em>“it’s live in the world”</em> should be minutes, not months. You bring the vision. Your AI team handles the building, writing, designing, marketing, and measuring — end to end, on your machine, on your terms.</p>
+      <div class="row" style="gap:10px;margin-top:6px">
+        <a class="btn" href="#/brain">🧠 Start with your Brain</a>
+        <a class="btn ghost" href="#/howto">🧭 See how it works</a>
+      </div>
+    </div>
+
+    <section class="learn-section">
+      <h2>What “autonomous ecosystem” actually means</h2>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin-top:14px">
+        <div class="card"><div class="learn-ic">🌱</div><b>One shared memory</b><p class="muted">Everything grows from your Brain. Tell it about your business once and all twelve teammates inherit that context — no re-briefing, no drift.</p></div>
+        <div class="card"><div class="learn-ic">🔗</div><b>Connected, not siloed</b><p class="muted">A power-up feeds your documents. A task becomes a deliverable. A site feeds your analytics and your SEO score. Each part makes the others smarter.</p></div>
+        <div class="card"><div class="learn-ic">🔒</div><b>Yours alone</b><p class="muted">It runs locally. Your ideas, customers, and strategy never leave your device. Autonomy without surveillance.</p></div>
+        <div class="card"><div class="learn-ic">♾️</div><b>Always working</b><p class="muted">Automations run on schedule and deliverables pile up while you focus on the next idea. The ecosystem compounds.</p></div>
+      </div>
+    </section>
+
+    <section class="learn-section">
+      <h2>Everything HELIX does for you</h2>
+      <p class="muted" style="max-width:640px">Nine connected functions that take an idea from a sentence to something real — a page, a plan, a campaign, a measurable result.</p>
+      <div class="grid c2" style="margin-top:16px">
+        ${FUNCTIONS.map((f) => `
+          <a class="card func-card" href="${f.href}">
+            <div class="row" style="gap:11px;align-items:flex-start">
+              <span class="learn-ic">${f.icon}</span>
+              <span><b>${f.name}</b><p class="muted" style="margin-top:3px">${f.text}</p></span>
+            </div>
+            <span class="func-go">Open ${f.name} →</span>
+          </a>`).join('')}
+      </div>
+    </section>
+
+    <section class="learn-section">
+      <div class="card cta-learn">
+        <h2 style="border:none;margin:0">The whole point: momentum.</h2>
+        <p class="muted" style="max-width:600px;margin:8px auto 18px">Most tools give you one more thing to manage. HELIX gives you a team that manages the work — so the only thing left for you to do is have the next idea.</p>
+        <a class="btn" href="#/howto">🧭 Read the How-to & secret tips</a>
+      </div>
+    </section>
+  </div>`;
+};
+
+routes.howto = async (main) => {
+  await loadBoot();
+  const STEPS = [
+    { n: '01', icon: '🧠', title: 'Feed the Brain first', body: 'This is the highest-leverage five minutes in HELIX. Open <a href="#/brain">Brain</a> and fill in your business name, audience, what you sell, and your tone. Every other feature reads from here — the richer it is, the more on-brand everything else becomes.', href: '#/brain', cta: 'Set up Brain' },
+    { n: '02', icon: '💬', title: 'Talk to a specialist', body: 'Open the <a href="#/helpers">AI Team</a> and pick whoever fits the job — Penn for copy, Milli for sales, Seomi for SEO. Chat like you would with a real teammate. They already know your business, so skip the context and get to the ask.', href: '#/helpers', cta: 'Meet the team' },
+    { n: '03', icon: '⚡', title: 'Run a power-up for finished work', body: 'When you want a complete deliverable rather than a conversation, use a <a href="#/powerups">Power-up</a>. Fill in a field or two and get a full content plan, sales script, or SEO brief — saved straight to your Documents.', href: '#/powerups', cta: 'Browse power-ups' },
+    { n: '04', icon: '🌐', title: 'Build and publish a site', body: 'In <a href="#/sites">Website Studio</a>, create a site and hit generate — it writes the copy from your Brain. Edit any section with the live preview on the right, then view it live. Re-generate anytime to get fresh angles.', href: '#/sites', cta: 'Open Studio' },
+    { n: '05', icon: '📣', title: 'Fill your calendar in one click', body: 'In <a href="#/marketing">Marketing</a>, generate a week of platform-native posts, then move each from draft → scheduled → posted as you go. Generate an email campaign the same way.', href: '#/marketing', cta: 'Plan content' },
+    { n: '06', icon: '🔁', title: 'Put it on autopilot', body: 'Turn any recurring job into an <a href="#/automations">Automation</a> — “draft 5 post ideas every Monday,” “weekly competitor checklist.” It runs on schedule and drops results in your <a href="#/inbox">Inbox</a>.', href: '#/automations', cta: 'Create automation' },
+  ];
+  const TIPS = [
+    { icon: '🎯', title: 'Add knowledge items, not just the profile', text: 'Paste your pricing, FAQs, refund policy, and product specs as Brain knowledge items. Teammates quote them verbatim — turning generic advice into answers that are actually true for your business.' },
+    { icon: '🔗', title: 'Chain the functions', text: 'Run an SEO brief power-up → hand it to Penn in chat to write the article → drop the article as a Brain knowledge item. Each step makes the next output sharper. The ecosystem rewards sequences.' },
+    { icon: '🗣️', title: 'Set your tone deliberately', text: 'The “Brand tone” field is a superpower. Try “bold and irreverent” vs “calm and expert” — every helper, email, and site instantly shifts voice. Tune it until replies sound like you.' },
+    { icon: '⚙️', title: 'Assign tasks to the right specialist', text: 'When you create a Task, assign a helper and use “AI run.” The teammate completes it in their voice and attaches the deliverable — great for batching a to-do list into finished work.' },
+    { icon: '🔍', title: 'Audit before you publish', text: 'Run an SEO audit on a Studio site before sharing it. Fix the flagged items (title length, meta description, one H1) and your score climbs fast — free ranking wins most people skip.' },
+    { icon: '🔌', title: 'Go bespoke with a provider', text: 'HELIX is fully useful offline, but connect an AI provider in <a href="#/settings">Settings</a> (Anthropic, OpenAI, or a local Ollama model) and every generation becomes uniquely tailored instead of template-based.' },
+    { icon: '💾', title: 'Export is your undo button', text: 'Before a big change or import, hit Export in Settings for a full JSON snapshot you own. It’s a backup, a way to move between machines, and a safety net all in one.' },
+    { icon: '📥', title: 'Let automations stack up', text: 'Set a couple of daily automations and simply check your Inbox each morning — a steady stream of ideas and drafts waiting, with zero effort from you. This is the “never clocks out” payoff.' },
+  ];
+  main.innerHTML = `<div class="page learn">
+    <div class="page-head"><div>
+      <div class="eyebrow">How-to & secret tips</div>
+      <h1>Get from idea to done — the fast way.</h1>
+      <p class="muted" style="max-width:620px">Follow the six steps to run the full loop, then steal the power-user tips most people never discover.</p>
+    </div></div>
+
+    <section class="learn-section">
+      <h2>The core loop, in six steps</h2>
+      <div class="steps">
+        ${STEPS.map((s) => `
+          <div class="step">
+            <div class="step-n">${s.n}</div>
+            <div class="step-body">
+              <b>${s.icon} ${s.title}</b>
+              <p class="muted">${s.body}</p>
+              <a class="btn ghost sm" href="${s.href}">${s.cta} →</a>
+            </div>
+          </div>`).join('')}
+      </div>
+    </section>
+
+    <section class="learn-section">
+      <h2>Secret tips for the best results</h2>
+      <p class="muted" style="max-width:620px">Small habits that separate “nice tool” from “unfair advantage.”</p>
+      <div class="grid c2" style="margin-top:16px">
+        ${TIPS.map((t) => `
+          <div class="card tip-card">
+            <div class="row" style="gap:11px;align-items:flex-start">
+              <span class="learn-ic">${t.icon}</span>
+              <span><b>${t.title}</b><p class="muted" style="margin-top:3px">${t.text}</p></span>
+            </div>
+          </div>`).join('')}
+      </div>
+    </section>
+
+    <section class="learn-section">
+      <div class="card cta-learn">
+        <h2 style="border:none;margin:0">Ready? Pick where to start.</h2>
+        <div class="row" style="justify-content:center;gap:10px;margin-top:16px;flex-wrap:wrap">
+          <a class="btn" href="#/brain">🧠 Set up Brain</a>
+          <a class="btn ghost" href="#/powerups">⚡ Run a power-up</a>
+          <a class="btn ghost" href="#/sites">🌐 Build a site</a>
+        </div>
+      </div>
+    </section>
+  </div>`;
 };
 
 // ---------- boot ----------
