@@ -49,7 +49,7 @@ function computeNextRun(schedule, from = Date.now()) {
 
 function ask(helperId, message) {
   const helper = HELPER_MAP[helperId] || HELPER_MAP.vizzy;
-  return { text: offlineGenerate({ helper, brain: db.brain, message }), engine: 'offline' };
+  return { text: offlineGenerate({ helper, brain: db.brain, message, workspace: db }), engine: 'offline' };
 }
 
 function runAutomationNow(a) {

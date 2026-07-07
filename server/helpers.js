@@ -107,11 +107,43 @@ export function brainContext(brain, knowledge) {
   return lines.join('\n');
 }
 
-export function systemPrompt(helper, brain, knowledge) {
+// A live snapshot of the whole workspace so every helper is aware of what the
+// rest of the ecosystem has already produced — the "ecosystem intelligence".
+export function workspaceContext(state) {
+  if (!state) return '';
+  const lines = [];
+  const openTasks = state.tasks.filter((t) => t.status !== 'done');
+  if (state.tasks.length) {
+    lines.push(`Tasks: ${openTasks.length} open of ${state.tasks.length}.` +
+      (openTasks.length ? ' Next up: ' + openTasks.slice(0, 3).map((t) => `“${t.title}”`).join(', ') + '.' : ''));
+  }
+  if (state.sites.length) {
+    lines.push(`Websites: ${state.sites.length} (${state.sites.filter((s) => s.published).length} live) — ` +
+      state.sites.slice(0, 3).map((s) => s.name).join(', ') + '.');
+  }
+  const lastAudit = state.seoAudits[0];
+  if (lastAudit) lines.push(`Latest SEO audit: ${lastAudit.target} scored ${lastAudit.score}/100 (${lastAudit.failed} issues to fix).`);
+  if (state.documents.length) {
+    lines.push(`Documents produced: ${state.documents.length}. Recent: ` +
+      state.documents.slice(0, 3).map((d) => `“${d.title}”`).join(', ') + '.');
+  }
+  if (state.calendar.length) {
+    const scheduled = state.calendar.filter((p) => p.status !== 'posted').length;
+    lines.push(`Content calendar: ${state.calendar.length} posts (${scheduled} not yet posted).`);
+  }
+  if (state.automations.length) {
+    lines.push(`Automations: ${state.automations.filter((a) => a.enabled).length} active of ${state.automations.length}.`);
+  }
+  return lines.join('\n');
+}
+
+export function systemPrompt(helper, brain, knowledge, state) {
   const ctx = brainContext(brain, knowledge);
+  const ws = workspaceContext(state);
   return [
     helper.prompt,
     ctx ? `\nBusiness context (Brain):\n${ctx}` : '',
-    '\nAlways tailor output to this business. Use markdown. Be direct and actionable.',
+    ws ? `\nCurrent workspace state (reference it when relevant — the user's team has already done this work):\n${ws}` : '',
+    '\nYou are one member of a coordinated AI team; when useful, point to what another teammate or tool could do next. Always tailor output to this business. Use markdown. Be direct and actionable.',
   ].join('\n');
 }

@@ -65,7 +65,7 @@ const PROVIDERS = { anthropic: callAnthropic, openai: callOpenAI, ollama: callOl
  * generate({ settings, helper, brain, system, messages }) → { text, engine }
  * messages: [{role:'user'|'assistant', content}] — last one is the request.
  */
-export async function generate({ settings, helper, brain, system, messages }) {
+export async function generate({ settings, helper, brain, system, messages, workspace }) {
   const provider = PROVIDERS[settings?.provider];
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
   if (provider && (settings.provider === 'ollama' || settings.apiKey)) {
@@ -77,7 +77,7 @@ export async function generate({ settings, helper, brain, system, messages }) {
     }
   }
   return {
-    text: offlineGenerate({ helper, brain, message: lastUser?.content || '' }),
+    text: offlineGenerate({ helper, brain, message: lastUser?.content || '', workspace }),
     engine: 'offline',
   };
 }

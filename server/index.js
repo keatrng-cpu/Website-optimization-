@@ -37,8 +37,8 @@ export function createApp({ dataDir } = {}) {
 
   async function askHelper(helperId, messages) {
     const helper = HELPER_MAP[helperId] || HELPER_MAP.vizzy;
-    const system = systemPrompt(helper, S().brain, S().knowledge);
-    return generate({ settings: S().settings, helper, brain: S().brain, system, messages });
+    const system = systemPrompt(helper, S().brain, S().knowledge, S());
+    return generate({ settings: S().settings, helper, brain: S().brain, system, messages, workspace: S() });
   }
 
   // ---------- bootstrap ----------

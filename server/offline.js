@@ -27,7 +27,23 @@ function detectIntent(text) {
   if (has('plan', 'strategy', 'roadmap', 'goal', 'grow')) return 'plan';
   if (has('sop', 'checklist', 'agenda', 'summar', 'organize', 'schedule')) return 'ops';
   if (has('product description', 'listing', 'cart', 'pricing', 'store')) return 'ecommerce';
+  if (has('what should i', 'focus', 'priorit', 'next step', 'where do i', 'status', 'what now', 'overwhelm', "what's next", 'whats next')) return 'status';
   return 'general';
+}
+
+// Turn the live workspace snapshot into a compact, referenceable brief.
+function workspaceBrief(ws) {
+  if (!ws) return null;
+  const openTasks = (ws.tasks || []).filter((t) => t.status !== 'done');
+  const liveSites = (ws.sites || []).filter((s) => s.published);
+  const lastAudit = (ws.seoAudits || [])[0];
+  const unposted = (ws.calendar || []).filter((p) => p.status !== 'posted');
+  const activeAutos = (ws.automations || []).filter((a) => a.enabled);
+  return {
+    openTasks, liveSites, lastAudit, unposted, activeAutos,
+    docs: ws.documents || [],
+    any: (ws.tasks?.length || ws.sites?.length || ws.documents?.length || ws.calendar?.length || ws.automations?.length),
+  };
 }
 
 const GENERATORS = {
@@ -408,10 +424,49 @@ Based on your business profile${brain.industry ? ` (${brain.industry})` : ''} an
 
 *Tip: connect an AI provider in Settings (Anthropic, OpenAI, or local Ollama) for fully bespoke answers — this response was produced by the built-in offline engine.*`;
   },
+
+  status(req, brain, helper, ws) {
+    const b = workspaceBrief(ws);
+    if (!b || !b.any) {
+      return `# Where to start at ${biz(brain)}
+
+Your workspace is a blank canvas — here's the highest-leverage first move:
+
+1. **Fill in your 🧠 Brain** so every teammate knows your business.
+2. **Run a power-up** (a content plan or landing-page copy) for an instant win.
+3. **Build a website** from your Brain and publish it in seconds.
+
+Do those three and come back — I'll tailor the plan to what you've built.`;
+    }
+    const lines = [];
+    lines.push(`# Your focus right now — a read across ${biz(brain)}`);
+    lines.push('\nHere\'s what your AI team can see across the whole workspace:\n');
+    if (b.openTasks.length) lines.push(`- **${b.openTasks.length} open task${b.openTasks.length > 1 ? 's' : ''}** — start with **${b.openTasks[0].title}**${b.openTasks[0].helperId ? ` (assigned; hit “AI run” to have it completed for you)` : ' (assign a teammate and let them run it)'}.`);
+    if (b.lastAudit) {
+      const grade = b.lastAudit.score >= 75 ? 'solid' : b.lastAudit.score >= 50 ? 'middling' : 'weak';
+      lines.push(`- **SEO is ${grade}** — your last audit of ${b.lastAudit.target} scored **${b.lastAudit.score}/100** with ${b.lastAudit.failed} fixable issues. Clearing those is the fastest ranking win available.`);
+    } else if (b.liveSites.length) {
+      lines.push(`- **You have ${b.liveSites.length} live site${b.liveSites.length > 1 ? 's' : ''} but no SEO audit yet** — run one on **${b.liveSites[0].name}** to find quick on-page wins.`);
+    }
+    if (b.unposted.length) lines.push(`- **${b.unposted.length} social post${b.unposted.length > 1 ? 's' : ''} queued and not yet posted** — schedule them so your calendar keeps momentum.`);
+    else if (!(ws.calendar || []).length) lines.push(`- **Your content calendar is empty** — generate a week of posts so you're not starting from scratch each day.`);
+    if (!b.activeAutos.length) lines.push(`- **No automations are running** — set one up (e.g. weekly post ideas) so work happens while you're away.`);
+    else lines.push(`- **${b.activeAutos.length} automation${b.activeAutos.length > 1 ? 's are' : ' is'} running** — check your Inbox for what they've produced.`);
+    lines.push('\n## The one thing to do next');
+    const next = b.openTasks.length
+      ? `Complete **${b.openTasks[0].title}** — it's your oldest open commitment.`
+      : b.lastAudit && b.lastAudit.failed
+        ? `Fix the ${b.lastAudit.failed} issues on your latest SEO audit — measurable, fast, and compounding.`
+        : !b.activeAutos.length
+          ? `Turn your most repetitive job into an automation so your team keeps working without you.`
+          : `Generate this week's content so your calendar stays full.`;
+    lines.push(next);
+    return lines.join('\n');
+  },
 };
 
-export function offlineGenerate({ helper, brain, message }) {
+export function offlineGenerate({ helper, brain, message, workspace }) {
   const intent = detectIntent(message || '');
   const gen = GENERATORS[intent] || GENERATORS.general;
-  return gen(message, brain, helper);
+  return gen(message, brain, helper, workspace);
 }

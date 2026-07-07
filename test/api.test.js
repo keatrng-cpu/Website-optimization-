@@ -304,6 +304,21 @@ test('hardening: import normalizes malformed shapes and recomputes schedules', a
   await api('POST', '/api/import', exp.data);
 });
 
+test('ecosystem intelligence: AI references real workspace state', async () => {
+  // seed a distinctive task and an SEO audit, then ask for focus
+  await api('POST', '/api/tasks', { title: 'Zephyr launch checklist', helperId: 'vizzy' });
+  const sites = await api('GET', '/api/sites');
+  await api('POST', '/api/seo/audit', { siteId: sites.data[0].id });
+
+  const chat = await api('POST', '/api/chats', { helperId: 'gigi' });
+  const msg = await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'What should I focus on next?' });
+  const text = msg.data.reply.content;
+  assert.ok(text.includes('Zephyr launch checklist'), 'reply should cite the real open task');
+  assert.ok(/\d+\/100/.test(text), 'reply should cite the real SEO score');
+  assert.ok(/focus/i.test(text), 'status intent should produce a focus read');
+  await api('DELETE', `/api/chats/${chat.data.id}`);
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);
