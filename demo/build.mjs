@@ -113,12 +113,11 @@ const banner = `
   </div>`;
 
 const bannerCSS = `
-#demo-banner{position:sticky;top:0;z-index:60;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;
+#demo-banner{flex:none;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;
   padding:8px 16px;background:linear-gradient(90deg,#1d2440,#161c30);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
 #demo-banner b{color:var(--text)}
 #demo-banner .demo-note{color:var(--dim)}
-#app{height:calc(100vh - 37px)}
-@media (max-width:860px){#demo-banner .demo-note{display:none}#app{height:calc(100vh - 37px)}}
+@media (max-width:860px){#demo-banner .demo-note{display:none}}
 `;
 
 const content = `<title>HELIX — Interactive Demo</title>
@@ -127,8 +126,13 @@ ${read('public/styles.css')}
 ${bannerCSS}
 </style>
 ${banner}
+<div class="mobile-top">
+  <button id="menuBtn" aria-label="Open menu">☰</button>
+  <span class="brand">⬢ HELIX</span>
+</div>
 <div id="app">
   <aside class="sidebar" id="sidebar"></aside>
+  <div id="backdrop"></div>
   <main class="main" id="main"></main>
 </div>
 <script>

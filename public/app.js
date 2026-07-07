@@ -129,12 +129,25 @@ function navigate() {
   root.innerHTML = '<div class="page"><p class="muted">Loading…</p></div>';
   const host = $('#main');
   host.replaceChildren(root);
+  closeDrawer();
   fn(root, rest).catch((e) => {
     if (!root.isConnected) return; // superseded by a newer navigation
     root.innerHTML = `<div class="page"><div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div></div>`;
   });
 }
 window.addEventListener('hashchange', navigate);
+
+// ---------- mobile nav drawer ----------
+function closeDrawer() {
+  $('#sidebar')?.classList.remove('open');
+  $('#backdrop')?.classList.remove('show');
+}
+$('#menuBtn')?.addEventListener('click', () => {
+  $('#sidebar').classList.toggle('open');
+  $('#backdrop').classList.toggle('show', $('#sidebar').classList.contains('open'));
+});
+$('#backdrop')?.addEventListener('click', closeDrawer);
+$('#sidebar')?.addEventListener('click', (e) => { if (e.target.closest('a')) closeDrawer(); });
 
 // ---------- sidebar ----------
 const NAV = [
