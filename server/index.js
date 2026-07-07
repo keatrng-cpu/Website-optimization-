@@ -12,6 +12,7 @@ import { computeNextRun, runAutomation, startScheduler } from './automations.js'
 import { PALETTES, slugify, defaultSections, renderSite, parseSiteContent, siteGenPrompt, applyGeneratedContent } from './sites.js';
 import { auditHTML, fetchAndAudit } from './seo.js';
 import { recordView, summarize } from './analytics.js';
+import { PRESETS, PRESET_MAP, redactIntegration, testIntegration } from './integrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -53,6 +54,7 @@ export function createApp({ dataDir } = {}) {
         chats: s.chats.length, tasks: s.tasks.length, documents: s.documents.length,
         automations: s.automations.length, sites: s.sites.length,
         unread: s.inbox.filter((i) => !i.read).length,
+        integrations: s.integrations.filter((i) => i.enabled).length,
       },
     });
   });
@@ -447,6 +449,61 @@ export function createApp({ dataDir } = {}) {
 
   // ---------- analytics ----------
   router.get('/api/analytics', (req, res) => sendJSON(res, 200, summarize(store)));
+
+  // ---------- integrations ----------
+  router.get('/api/integrations/presets', (req, res) => sendJSON(res, 200, PRESETS));
+  router.get('/api/integrations', (req, res) => sendJSON(res, 200, S().integrations.map(redactIntegration)));
+  router.post('/api/integrations', async (req, res) => {
+    const b = await readBody(req);
+    const preset = PRESET_MAP[b.preset] || PRESET_MAP['custom-rest'];
+    const name = String(b.name || preset.name).slice(0, 60);
+    const baseUrl = String(b.baseUrl ?? preset.baseUrl ?? '').trim();
+    if (!baseUrl && preset.type !== 'webhook') return bad(res, 'base URL is required');
+    const integ = {
+      id: uid(), name, preset: preset.id, type: preset.type, category: preset.category,
+      icon: preset.icon, baseUrl,
+      testPath: String(b.testPath ?? preset.testPath ?? ''),
+      auth: b.authKind
+        ? { kind: b.authKind, name: b.authHeaderName || preset.auth?.name }
+        : { ...preset.auth },
+      extraHeaders: preset.extraHeaders || {},
+      authValue: b.secret !== undefined ? String(b.secret) : '',
+      enabled: b.enabled !== false, lastTest: null, createdAt: Date.now(),
+    };
+    // For URL-as-secret presets (Slack), the base URL itself is the credential.
+    if (preset.urlIsSecret && b.secret) integ.baseUrl = String(b.secret);
+    S().integrations.unshift(integ);
+    store.save();
+    sendJSON(res, 201, redactIntegration(integ));
+  });
+  router.patch('/api/integrations/:id', async (req, res, { id }) => {
+    const integ = S().integrations.find((x) => x.id === id);
+    if (!integ) return notFound(res);
+    const b = await readBody(req);
+    if (b.name !== undefined) integ.name = String(b.name).slice(0, 60);
+    if (b.baseUrl !== undefined) integ.baseUrl = String(b.baseUrl).trim();
+    if (b.testPath !== undefined) integ.testPath = String(b.testPath);
+    if (b.enabled !== undefined) integ.enabled = !!b.enabled;
+    if (b.authKind !== undefined) integ.auth = { kind: b.authKind, name: b.authHeaderName || integ.auth?.name };
+    if (b.secret !== undefined && b.secret !== '') integ.authValue = String(b.secret); // blank keeps existing
+    store.save();
+    sendJSON(res, 200, redactIntegration(integ));
+  });
+  router.delete('/api/integrations/:id', (req, res, { id }) => {
+    const i = S().integrations.findIndex((x) => x.id === id);
+    if (i === -1) return notFound(res);
+    S().integrations.splice(i, 1);
+    store.save();
+    sendJSON(res, 200, { ok: true });
+  });
+  router.post('/api/integrations/:id/test', async (req, res, { id }) => {
+    const integ = S().integrations.find((x) => x.id === id);
+    if (!integ) return notFound(res);
+    const result = await testIntegration(integ);
+    integ.lastTest = result;
+    store.save();
+    sendJSON(res, 200, { integration: redactIntegration(integ), result });
+  });
 
   // ---------- settings / export ----------
   router.get('/api/settings', (req, res) => sendJSON(res, 200, redactedSettings()));

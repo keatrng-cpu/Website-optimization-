@@ -166,6 +166,8 @@ const NAV = [
   { id: 'seo', icon: '🔍', name: 'SEO' },
   { id: 'automations', icon: '🔁', name: 'Automations' },
   { id: 'analytics', icon: '📊', name: 'Analytics' },
+  { label: 'Connect' },
+  { id: 'integrations', icon: '🔌', name: 'Integrations', badge: 'integrations' },
   { label: 'Learn' },
   { id: 'about', icon: '✨', name: 'About HELIX' },
   { id: 'howto', icon: '🧭', name: 'How-to & Tips' },
@@ -1157,6 +1159,115 @@ routes.howto = async (main) => {
       </div>
     </section>
   </div>`;
+};
+
+routes.integrations = async (main) => {
+  await loadBoot();
+  const [presets, connected] = await Promise.all([
+    api('GET', '/api/integrations/presets'),
+    api('GET', '/api/integrations'),
+  ]);
+  const statusBadge = (i) => {
+    if (!i.lastTest) return '<span class="badge">not tested</span>';
+    if (i.lastTest.sandbox) return '<span class="badge warn">saved</span>';
+    return i.lastTest.ok ? '<span class="badge on">connected</span>' : '<span class="badge" style="color:var(--red)">failed</span>';
+  };
+  main.innerHTML = `<div class="page">
+    <div class="page-head"><div><h1>🔌 Integrations</h1>
+      <p>Connect the tools your business already runs on. Bring your own keys — everything is stored locally on your machine and used to make real, authenticated calls. Nothing is pre-connected, and no key ever leaves your device.</p></div></div>
+
+    ${connected.length ? `
+    <h2 style="font-size:15px;margin:6px 0 12px">Your connections</h2>
+    <div class="grid c2" style="margin-bottom:26px">
+      ${connected.map((i) => `
+        <div class="card">
+          <div class="row spread">
+            <div class="row" style="gap:10px"><span class="learn-ic">${i.icon || '🔗'}</span>
+              <span><b>${esc(i.name)}</b><div class="dim">${esc(i.baseUrl || '—')}</div></span></div>
+            ${statusBadge(i)}
+          </div>
+          <div class="dim" style="margin:10px 0">
+            ${i.type.toUpperCase()} · ${i.hasSecret ? `key ${esc(i.secretHint)}` : 'no key'}
+            ${i.lastTest ? ` · ${esc(i.lastTest.detail)}${i.lastTest.ms ? ` (${i.lastTest.ms}ms)` : ''}` : ''}
+          </div>
+          <div class="row">
+            <button class="btn sm" data-test="${i.id}">⚡ Test</button>
+            <button class="btn ghost sm" data-toggle="${i.id}:${!i.enabled}">${i.enabled ? '⏸ Disable' : '▶ Enable'}</button>
+            <button class="btn danger sm" data-del="${i.id}">✕</button>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <h2 style="font-size:15px;margin:6px 0 4px">Add a connection</h2>
+    <p class="dim" style="margin-bottom:14px">Pick a service to pre-fill the details, then paste your key.</p>
+    <div class="grid c3">
+      ${presets.map((p) => `
+        <button class="card func-card" data-preset="${p.id}" style="text-align:left;cursor:pointer">
+          <div class="row" style="gap:10px;align-items:flex-start">
+            <span class="learn-ic">${p.icon}</span>
+            <span><b>${esc(p.name)}</b><p class="muted" style="margin-top:3px">${esc(p.desc)}</p></span>
+          </div>
+          <span class="func-go">${esc(p.category)} · ${p.type} → connect</span>
+        </button>`).join('')}
+    </div>
+  </div>`;
+
+  function openForm(preset) {
+    const needsUrl = ['custom-rest', 'custom-webhook', 'custom-mcp'].includes(preset.id) || !preset.baseUrl;
+    const urlSecret = preset.urlIsSecret;
+    const m = modal(`
+      <h2>${preset.icon} Connect ${esc(preset.name)}</h2>
+      <p class="dim">${esc(preset.desc)}</p>
+      <label>Display name</label><input id="iName" value="${esc(preset.name)}">
+      ${needsUrl && !urlSecret ? `<label>Base URL</label><input id="iUrl" placeholder="https://api.example.com" value="${esc(preset.baseUrl || '')}">` : ''}
+      ${preset.auth?.kind !== 'none' || urlSecret
+        ? `<label>${esc(preset.keyLabel)}${urlSecret ? '' : ' <span class="dim">(stored locally, never shown again)</span>'}</label>
+           <input id="iSecret" type="password" placeholder="${esc(preset.keyHint || '')}">`
+        : '<p class="dim" style="margin-top:10px">No key required for this connection.</p>'}
+      ${['custom-rest'].includes(preset.id) ? `
+        <label>Auth style</label>
+        <select id="iAuthKind"><option value="bearer">Bearer token</option><option value="header">Custom header</option><option value="query">Query param</option><option value="none">None</option></select>
+        <label>Health check path</label><input id="iTestPath" value="/" placeholder="/health">` : ''}
+      <div class="actions"><button class="btn ghost" id="iCancel">Cancel</button><button class="btn" id="iSave">Save connection</button></div>`);
+    $('#iCancel', m).onclick = () => m.remove();
+    $('#iSave', m).onclick = async () => {
+      const body = { preset: preset.id, name: $('#iName', m)?.value };
+      if ($('#iUrl', m)) body.baseUrl = $('#iUrl', m).value;
+      if ($('#iSecret', m)) body.secret = $('#iSecret', m).value;
+      if ($('#iAuthKind', m)) body.authKind = $('#iAuthKind', m).value;
+      if ($('#iTestPath', m)) body.testPath = $('#iTestPath', m).value;
+      try {
+        const integ = await api('POST', '/api/integrations', body);
+        m.remove();
+        toast('Connection saved 🔌');
+        // immediately test it so the user gets real feedback
+        try {
+          const { result } = await api('POST', `/api/integrations/${integ.id}/test`, {});
+          toast(result.sandbox ? 'Saved — test it live in the installed app' : result.ok ? 'Connected ✅' : `Test: ${result.detail}`, !result.ok && !result.sandbox);
+        } catch { /* test is best-effort */ }
+        navigate();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
+
+  $('.page', main).addEventListener('click', async (e) => {
+    const t = e.target;
+    const presetBtn = t.closest('[data-preset]');
+    if (presetBtn) { openForm(presets.find((p) => p.id === presetBtn.dataset.preset)); return; }
+    if (t.dataset.test) {
+      t.disabled = true; t.textContent = '⏳ testing…';
+      try {
+        const { result } = await api('POST', `/api/integrations/${t.dataset.test}/test`, {});
+        toast(result.sandbox ? result.detail : result.ok ? `Connected (${result.ms}ms) ✅` : `Failed: ${result.detail}`, !result.ok && !result.sandbox);
+      } catch (err) { toast(err.message, true); }
+      navigate();
+    } else if (t.dataset.toggle) {
+      const [id, enabled] = t.dataset.toggle.split(':');
+      await api('PATCH', `/api/integrations/${id}`, { enabled: enabled === 'true' }); navigate();
+    } else if (t.dataset.del) {
+      await api('DELETE', `/api/integrations/${t.dataset.del}`); navigate();
+    }
+  });
 };
 
 // ---------- boot ----------

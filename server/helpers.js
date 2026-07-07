@@ -134,6 +134,10 @@ export function workspaceContext(state) {
   if (state.automations.length) {
     lines.push(`Automations: ${state.automations.filter((a) => a.enabled).length} active of ${state.automations.length}.`);
   }
+  const conn = (state.integrations || []).filter((i) => i.enabled);
+  if (conn.length) {
+    lines.push(`Connected integrations: ${conn.map((i) => i.name).join(', ')}. You may suggest using these to fetch data or push results.`);
+  }
   return lines.join('\n');
 }
 

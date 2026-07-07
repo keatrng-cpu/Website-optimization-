@@ -13,7 +13,7 @@ const DEFAULTS = () => ({
     tone: 'friendly and professional', products: '', goals: '', website: '', location: '',
   },
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
-  sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [],
+  sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [],
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -464,6 +464,52 @@ function handle(method, pathname, query, body) {
         return ok(report);
       }
       if (p[1] === 'audits') return ok(db.seoAudits);
+      break;
+    }
+
+    case 'integrations': {
+      if (p[1] === 'presets') return ok(PRESETS);
+      if (!id && method === 'GET') return ok(db.integrations.map(redactIntegration));
+      if (!id && method === 'POST') {
+        const preset = PRESET_MAP[body.preset] || PRESET_MAP['custom-rest'];
+        const baseUrl = String(body.baseUrl ?? preset.baseUrl ?? '').trim();
+        if (!baseUrl && preset.type !== 'webhook') return bad('base URL is required');
+        const integ = {
+          id: uid(), name: String(body.name || preset.name).slice(0, 60), preset: preset.id,
+          type: preset.type, category: preset.category, icon: preset.icon, baseUrl,
+          testPath: String(body.testPath ?? preset.testPath ?? ''),
+          auth: body.authKind ? { kind: body.authKind, name: body.authHeaderName || preset.auth?.name } : { ...preset.auth },
+          extraHeaders: preset.extraHeaders || {},
+          authValue: body.secret !== undefined ? String(body.secret) : '',
+          enabled: body.enabled !== false, lastTest: null, createdAt: Date.now(),
+        };
+        if (preset.urlIsSecret && body.secret) integ.baseUrl = String(body.secret);
+        db.integrations.unshift(integ); save();
+        return ok(redactIntegration(integ), 201);
+      }
+      const integ = db.integrations.find((x) => x.id === id);
+      if (!integ) return notFound();
+      if (p[2] === 'test' && method === 'POST') {
+        // The sandboxed demo can't make cross-origin calls; report honestly.
+        const result = { ok: false, status: 0, ms: 0, sandbox: true,
+          detail: 'Saved. Live connection tests run in the installed app — the browser demo can’t make cross-origin calls.', at: Date.now() };
+        integ.lastTest = result; save();
+        return ok({ integration: redactIntegration(integ), result });
+      }
+      if (method === 'PATCH') {
+        if (body.name !== undefined) integ.name = String(body.name).slice(0, 60);
+        if (body.baseUrl !== undefined) integ.baseUrl = String(body.baseUrl).trim();
+        if (body.testPath !== undefined) integ.testPath = String(body.testPath);
+        if (body.enabled !== undefined) integ.enabled = !!body.enabled;
+        if (body.authKind !== undefined) integ.auth = { kind: body.authKind, name: body.authHeaderName || integ.auth?.name };
+        if (body.secret !== undefined && body.secret !== '') integ.authValue = String(body.secret);
+        save();
+        return ok(redactIntegration(integ));
+      }
+      if (method === 'DELETE') {
+        db.integrations.splice(db.integrations.indexOf(integ), 1); save();
+        return ok({ ok: true });
+      }
       break;
     }
 

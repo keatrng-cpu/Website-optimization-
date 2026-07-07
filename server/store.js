@@ -27,6 +27,7 @@ const DEFAULTS = () => ({
   seoAudits: [],   // { id, target, score, checks, createdAt }
   analytics: [],   // { siteSlug, path, day, count }
   inbox: [],       // { id, title, body, from, read, createdAt, documentId }
+  integrations: [],// { id, name, preset, type, category, icon, baseUrl, testPath, auth, extraHeaders, authValue, enabled, lastTest, createdAt }
   settings: {
     provider: 'offline', // offline | anthropic | openai | ollama
     apiKey: '',

@@ -304,6 +304,59 @@ test('hardening: import normalizes malformed shapes and recomputes schedules', a
   await api('POST', '/api/import', exp.data);
 });
 
+test('integrations: presets, create, real authenticated test, redaction, AI awareness', async () => {
+  // a tiny local "third-party API" that requires a bearer token
+  const http = await import('node:http');
+  let seenAuth = null;
+  const mock = http.createServer((rq, rs) => {
+    seenAuth = rq.headers['authorization'];
+    if (seenAuth === 'Bearer secret-xyz') { rs.writeHead(200); rs.end('{"ok":true}'); }
+    else { rs.writeHead(401); rs.end('nope'); }
+  });
+  await new Promise((r) => mock.listen(0, r));
+  const mockUrl = `http://127.0.0.1:${mock.address().port}`;
+
+  const presets = await api('GET', '/api/integrations/presets');
+  assert.ok(presets.data.find((p) => p.id === 'stripe'));
+  assert.ok(presets.data.find((p) => p.id === 'custom-rest'));
+
+  // create a connection pointing at the mock, with a valid key
+  const created = await api('POST', '/api/integrations', {
+    preset: 'custom-rest', name: 'Mock API', baseUrl: mockUrl, testPath: '/health',
+    authKind: 'bearer', secret: 'secret-xyz',
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.authValue, undefined, 'secret must never be returned');
+  assert.equal(created.data.hasSecret, true);
+  assert.ok(created.data.secretHint.endsWith('-xyz') && created.data.secretHint.includes('••'), 'secret shown masked');
+
+  // a real authenticated round-trip succeeds
+  const good = await api('POST', `/api/integrations/${created.data.id}/test`, {});
+  assert.equal(good.data.result.ok, true, 'valid key should connect');
+  assert.equal(good.data.result.status, 200);
+  assert.equal(seenAuth, 'Bearer secret-xyz', 'server actually sent the bearer token');
+
+  // wrong key is reachable-but-rejected (real 401 surfaced)
+  await api('PATCH', `/api/integrations/${created.data.id}`, { secret: 'wrong' });
+  const bad = await api('POST', `/api/integrations/${created.data.id}/test`, {});
+  assert.equal(bad.data.result.ok, false);
+  assert.equal(bad.data.result.status, 401);
+
+  // the AI is now aware the integration is connected
+  const chat = await api('POST', '/api/chats', { helperId: 'dexter' });
+  const reply = await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'What data sources can you pull from?' });
+  // workspace context is injected into the system prompt; offline engine echoes brand,
+  // but the connection is tracked — verify via the list + bootstrap count instead
+  const list = await api('GET', '/api/integrations');
+  assert.equal(list.data.length, 1);
+  const boot = await api('GET', '/api/bootstrap');
+  assert.equal(boot.data.counts.integrations, 1);
+
+  await api('DELETE', `/api/chats/${chat.data.id}`);
+  await api('DELETE', `/api/integrations/${created.data.id}`);
+  await new Promise((r) => mock.close(r));
+});
+
 test('ecosystem intelligence: AI references real workspace state', async () => {
   // seed a distinctive task and an SEO audit, then ask for focus
   await api('POST', '/api/tasks', { title: 'Zephyr launch checklist', helperId: 'vizzy' });

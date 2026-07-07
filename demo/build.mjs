@@ -100,6 +100,7 @@ const js = [
   port('server/powerups.js'),
   port('server/sites.js'),
   port('server/seo.js'),
+  port('server/integrations.js'),
   read('demo/browser-backend.js'),
   '})();',
   glue,

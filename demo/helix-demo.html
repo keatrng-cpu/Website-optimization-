@@ -477,6 +477,10 @@ function workspaceContext(state) {
   if (state.automations.length) {
     lines.push(`Automations: ${state.automations.filter((a) => a.enabled).length} active of ${state.automations.length}.`);
   }
+  const conn = (state.integrations || []).filter((i) => i.enabled);
+  if (conn.length) {
+    lines.push(`Connected integrations: ${conn.map((i) => i.name).join(', ')}. You may suggest using these to fetch data or push results.`);
+  }
   return lines.join('\n');
 }
 
@@ -1342,6 +1346,154 @@ async function fetchAndAudit(url) {
 }
 
 
+// Integrations: a real bring-your-own-key connector framework. Each integration
+// stores its own credentials locally and the app makes genuine authenticated
+// requests to it. Presets are just pre-filled templates that activate once the
+// user pastes a key — nothing is "pre-connected", which is the only honest model
+// for a local, private app.
+
+// Preset catalog. `auth.kind`: bearer | header | query | none.
+const PRESETS = [
+  {
+    id: 'openai', name: 'OpenAI', icon: '🧠', category: 'AI', type: 'rest',
+    baseUrl: 'https://api.openai.com', testPath: '/v1/models',
+    auth: { kind: 'bearer' }, keyLabel: 'API key', keyHint: 'sk-…',
+    desc: 'Chat, embeddings, and models. Also usable as your AI provider in Settings.',
+  },
+  {
+    id: 'anthropic', name: 'Anthropic (Claude)', icon: '✳️', category: 'AI', type: 'rest',
+    baseUrl: 'https://api.anthropic.com', testPath: '/v1/models',
+    auth: { kind: 'header', name: 'x-api-key' }, extraHeaders: { 'anthropic-version': '2023-06-01' },
+    keyLabel: 'API key', keyHint: 'sk-ant-…',
+    desc: 'Claude models for the highest-quality generation.',
+  },
+  {
+    id: 'stripe', name: 'Stripe', icon: '💳', category: 'Payments', type: 'rest',
+    baseUrl: 'https://api.stripe.com', testPath: '/v1/balance',
+    auth: { kind: 'bearer' }, keyLabel: 'Secret key', keyHint: 'sk_live_… or sk_test_…',
+    desc: 'Revenue, balances, customers, and payouts.',
+  },
+  {
+    id: 'github', name: 'GitHub', icon: '🐙', category: 'Dev', type: 'rest',
+    baseUrl: 'https://api.github.com', testPath: '/user',
+    auth: { kind: 'bearer' }, extraHeaders: { 'X-GitHub-Api-Version': '2022-11-28' },
+    keyLabel: 'Personal access token', keyHint: 'ghp_… or github_pat_…',
+    desc: 'Repos, issues, and pull requests.',
+  },
+  {
+    id: 'sendgrid', name: 'SendGrid', icon: '📧', category: 'Email', type: 'rest',
+    baseUrl: 'https://api.sendgrid.com', testPath: '/v3/scopes',
+    auth: { kind: 'bearer' }, keyLabel: 'API key', keyHint: 'SG.…',
+    desc: 'Send the email campaigns Emmie writes.',
+  },
+  {
+    id: 'hubspot', name: 'HubSpot', icon: '🟠', category: 'CRM', type: 'rest',
+    baseUrl: 'https://api.hubapi.com', testPath: '/crm/v3/objects/contacts?limit=1',
+    auth: { kind: 'bearer' }, keyLabel: 'Private app token', keyHint: 'pat-…',
+    desc: 'Contacts, deals, and marketing data.',
+  },
+  {
+    id: 'slack', name: 'Slack (Incoming Webhook)', icon: '💬', category: 'Notifications', type: 'webhook',
+    baseUrl: 'https://hooks.slack.com/services/…', testPath: '',
+    auth: { kind: 'none' }, keyLabel: 'Webhook URL', keyHint: 'https://hooks.slack.com/services/…',
+    urlIsSecret: true,
+    desc: 'Post updates and finished deliverables to a channel.',
+  },
+  {
+    id: 'ollama', name: 'Ollama (local)', icon: '🦙', category: 'AI', type: 'rest',
+    baseUrl: 'http://localhost:11434', testPath: '/api/tags',
+    auth: { kind: 'none' }, keyLabel: 'No key needed', keyHint: '',
+    desc: 'A fully local LLM. Zero cloud, zero cost.',
+  },
+  {
+    id: 'custom-rest', name: 'Custom REST API', icon: '🔗', category: 'Custom', type: 'rest',
+    baseUrl: '', testPath: '/', auth: { kind: 'bearer' }, keyLabel: 'Token (optional)', keyHint: '',
+    desc: 'Any HTTP JSON API. You set the base URL, auth, and a health path.',
+  },
+  {
+    id: 'custom-webhook', name: 'Custom Webhook', icon: '🪝', category: 'Custom', type: 'webhook',
+    baseUrl: '', testPath: '', auth: { kind: 'none' }, keyLabel: 'Webhook URL', keyHint: 'https://…',
+    urlIsSecret: false,
+    desc: 'Fire a JSON payload at any URL (Zapier, Make, n8n, your own server).',
+  },
+  {
+    id: 'custom-mcp', name: 'Custom MCP Server', icon: '🧩', category: 'Custom', type: 'mcp',
+    baseUrl: '', testPath: '', auth: { kind: 'bearer' }, keyLabel: 'Token (optional)', keyHint: '',
+    desc: 'A Model Context Protocol server (HTTP/JSON-RPC). Exposes its tools to your team.',
+  },
+];
+
+const PRESET_MAP = Object.fromEntries(PRESETS.map((p) => [p.id, p]));
+
+const TIMEOUT_MS = 12_000;
+
+function mask(value) {
+  if (!value) return '';
+  const s = String(value);
+  if (s.length <= 4) return '••••';
+  return '••••' + s.slice(-4);
+}
+
+// Public (redacted) view — a secret value is NEVER returned to the client.
+function redactIntegration(i) {
+  return {
+    id: i.id, name: i.name, preset: i.preset, type: i.type, category: i.category,
+    icon: i.icon, baseUrl: i.baseUrl, testPath: i.testPath, authKind: i.auth?.kind,
+    authHeaderName: i.auth?.name, enabled: i.enabled,
+    hasSecret: !!i.authValue, secretHint: mask(i.authValue),
+    lastTest: i.lastTest || null, createdAt: i.createdAt,
+  };
+}
+
+function buildRequest(i, pathOverride) {
+  const headers = { ...(i.extraHeaders || {}) };
+  let url = (i.baseUrl || '').replace(/\/$/, '') + (pathOverride ?? i.testPath ?? '');
+  const kind = i.auth?.kind;
+  if (i.authValue) {
+    if (kind === 'bearer') headers['Authorization'] = `Bearer ${i.authValue}`;
+    else if (kind === 'header' && i.auth.name) headers[i.auth.name] = i.authValue;
+    else if (kind === 'query' && i.auth.name) {
+      url += (url.includes('?') ? '&' : '?') + `${encodeURIComponent(i.auth.name)}=${encodeURIComponent(i.authValue)}`;
+    }
+  }
+  return { url, headers };
+}
+
+// A genuine authenticated request. For webhooks/mcp we POST a small probe;
+// for REST we GET the health path. Returns a structured, non-secret result.
+async function testIntegration(i) {
+  const started = Date.now();
+  try {
+    let url, headers, method, body;
+    if (i.type === 'webhook') {
+      url = i.baseUrl;
+      headers = { 'content-type': 'application/json' };
+      method = 'POST';
+      body = JSON.stringify({ text: '✅ HELIX connection test' });
+    } else if (i.type === 'mcp') {
+      const r = buildRequest(i, '');
+      url = r.url; headers = { ...r.headers, 'content-type': 'application/json' };
+      method = 'POST';
+      body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+    } else {
+      const r = buildRequest(i);
+      url = r.url; headers = r.headers; method = 'GET';
+    }
+    if (!/^https?:\/\//i.test(url)) throw new Error('base URL must start with http(s)://');
+    const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const ms = Date.now() - started;
+    // 2xx = healthy; 401/403 = reachable but the key is wrong (still useful signal)
+    const ok = res.ok;
+    const detail = ok ? 'Connected' : res.status === 401 || res.status === 403
+      ? `Reachable, but the credential was rejected (HTTP ${res.status})`
+      : `Reachable — HTTP ${res.status}`;
+    return { ok, status: res.status, ms, detail, at: Date.now() };
+  } catch (err) {
+    return { ok: false, status: 0, ms: Date.now() - started, detail: err.message || 'connection failed', at: Date.now() };
+  }
+}
+
+
 // In-browser HELIX backend for the single-file demo.
 // This file is concatenated INSIDE an IIFE after the ported server modules
 // (helpers.js, offline.js, powerups.js, sites.js, seo.js), so HELPERS,
@@ -1357,7 +1509,7 @@ const DEFAULTS = () => ({
     tone: 'friendly and professional', products: '', goals: '', website: '', location: '',
   },
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
-  sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [],
+  sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [],
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -1811,6 +1963,52 @@ function handle(method, pathname, query, body) {
       break;
     }
 
+    case 'integrations': {
+      if (p[1] === 'presets') return ok(PRESETS);
+      if (!id && method === 'GET') return ok(db.integrations.map(redactIntegration));
+      if (!id && method === 'POST') {
+        const preset = PRESET_MAP[body.preset] || PRESET_MAP['custom-rest'];
+        const baseUrl = String(body.baseUrl ?? preset.baseUrl ?? '').trim();
+        if (!baseUrl && preset.type !== 'webhook') return bad('base URL is required');
+        const integ = {
+          id: uid(), name: String(body.name || preset.name).slice(0, 60), preset: preset.id,
+          type: preset.type, category: preset.category, icon: preset.icon, baseUrl,
+          testPath: String(body.testPath ?? preset.testPath ?? ''),
+          auth: body.authKind ? { kind: body.authKind, name: body.authHeaderName || preset.auth?.name } : { ...preset.auth },
+          extraHeaders: preset.extraHeaders || {},
+          authValue: body.secret !== undefined ? String(body.secret) : '',
+          enabled: body.enabled !== false, lastTest: null, createdAt: Date.now(),
+        };
+        if (preset.urlIsSecret && body.secret) integ.baseUrl = String(body.secret);
+        db.integrations.unshift(integ); save();
+        return ok(redactIntegration(integ), 201);
+      }
+      const integ = db.integrations.find((x) => x.id === id);
+      if (!integ) return notFound();
+      if (p[2] === 'test' && method === 'POST') {
+        // The sandboxed demo can't make cross-origin calls; report honestly.
+        const result = { ok: false, status: 0, ms: 0, sandbox: true,
+          detail: 'Saved. Live connection tests run in the installed app — the browser demo can’t make cross-origin calls.', at: Date.now() };
+        integ.lastTest = result; save();
+        return ok({ integration: redactIntegration(integ), result });
+      }
+      if (method === 'PATCH') {
+        if (body.name !== undefined) integ.name = String(body.name).slice(0, 60);
+        if (body.baseUrl !== undefined) integ.baseUrl = String(body.baseUrl).trim();
+        if (body.testPath !== undefined) integ.testPath = String(body.testPath);
+        if (body.enabled !== undefined) integ.enabled = !!body.enabled;
+        if (body.authKind !== undefined) integ.auth = { kind: body.authKind, name: body.authHeaderName || integ.auth?.name };
+        if (body.secret !== undefined && body.secret !== '') integ.authValue = String(body.secret);
+        save();
+        return ok(redactIntegration(integ));
+      }
+      if (method === 'DELETE') {
+        db.integrations.splice(db.integrations.indexOf(integ), 1); save();
+        return ok({ ok: true });
+      }
+      break;
+    }
+
     case 'analytics':
       return ok(analyticsSummary());
 
@@ -2078,6 +2276,8 @@ const NAV = [
   { id: 'seo', icon: '🔍', name: 'SEO' },
   { id: 'automations', icon: '🔁', name: 'Automations' },
   { id: 'analytics', icon: '📊', name: 'Analytics' },
+  { label: 'Connect' },
+  { id: 'integrations', icon: '🔌', name: 'Integrations', badge: 'integrations' },
   { label: 'Learn' },
   { id: 'about', icon: '✨', name: 'About HELIX' },
   { id: 'howto', icon: '🧭', name: 'How-to & Tips' },
@@ -3070,6 +3270,115 @@ routes.howto = async (main) => {
       </div>
     </section>
   </div>`;
+};
+
+routes.integrations = async (main) => {
+  await loadBoot();
+  const [presets, connected] = await Promise.all([
+    api('GET', '/api/integrations/presets'),
+    api('GET', '/api/integrations'),
+  ]);
+  const statusBadge = (i) => {
+    if (!i.lastTest) return '<span class="badge">not tested</span>';
+    if (i.lastTest.sandbox) return '<span class="badge warn">saved</span>';
+    return i.lastTest.ok ? '<span class="badge on">connected</span>' : '<span class="badge" style="color:var(--red)">failed</span>';
+  };
+  main.innerHTML = `<div class="page">
+    <div class="page-head"><div><h1>🔌 Integrations</h1>
+      <p>Connect the tools your business already runs on. Bring your own keys — everything is stored locally on your machine and used to make real, authenticated calls. Nothing is pre-connected, and no key ever leaves your device.</p></div></div>
+
+    ${connected.length ? `
+    <h2 style="font-size:15px;margin:6px 0 12px">Your connections</h2>
+    <div class="grid c2" style="margin-bottom:26px">
+      ${connected.map((i) => `
+        <div class="card">
+          <div class="row spread">
+            <div class="row" style="gap:10px"><span class="learn-ic">${i.icon || '🔗'}</span>
+              <span><b>${esc(i.name)}</b><div class="dim">${esc(i.baseUrl || '—')}</div></span></div>
+            ${statusBadge(i)}
+          </div>
+          <div class="dim" style="margin:10px 0">
+            ${i.type.toUpperCase()} · ${i.hasSecret ? `key ${esc(i.secretHint)}` : 'no key'}
+            ${i.lastTest ? ` · ${esc(i.lastTest.detail)}${i.lastTest.ms ? ` (${i.lastTest.ms}ms)` : ''}` : ''}
+          </div>
+          <div class="row">
+            <button class="btn sm" data-test="${i.id}">⚡ Test</button>
+            <button class="btn ghost sm" data-toggle="${i.id}:${!i.enabled}">${i.enabled ? '⏸ Disable' : '▶ Enable'}</button>
+            <button class="btn danger sm" data-del="${i.id}">✕</button>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <h2 style="font-size:15px;margin:6px 0 4px">Add a connection</h2>
+    <p class="dim" style="margin-bottom:14px">Pick a service to pre-fill the details, then paste your key.</p>
+    <div class="grid c3">
+      ${presets.map((p) => `
+        <button class="card func-card" data-preset="${p.id}" style="text-align:left;cursor:pointer">
+          <div class="row" style="gap:10px;align-items:flex-start">
+            <span class="learn-ic">${p.icon}</span>
+            <span><b>${esc(p.name)}</b><p class="muted" style="margin-top:3px">${esc(p.desc)}</p></span>
+          </div>
+          <span class="func-go">${esc(p.category)} · ${p.type} → connect</span>
+        </button>`).join('')}
+    </div>
+  </div>`;
+
+  function openForm(preset) {
+    const needsUrl = ['custom-rest', 'custom-webhook', 'custom-mcp'].includes(preset.id) || !preset.baseUrl;
+    const urlSecret = preset.urlIsSecret;
+    const m = modal(`
+      <h2>${preset.icon} Connect ${esc(preset.name)}</h2>
+      <p class="dim">${esc(preset.desc)}</p>
+      <label>Display name</label><input id="iName" value="${esc(preset.name)}">
+      ${needsUrl && !urlSecret ? `<label>Base URL</label><input id="iUrl" placeholder="https://api.example.com" value="${esc(preset.baseUrl || '')}">` : ''}
+      ${preset.auth?.kind !== 'none' || urlSecret
+        ? `<label>${esc(preset.keyLabel)}${urlSecret ? '' : ' <span class="dim">(stored locally, never shown again)</span>'}</label>
+           <input id="iSecret" type="password" placeholder="${esc(preset.keyHint || '')}">`
+        : '<p class="dim" style="margin-top:10px">No key required for this connection.</p>'}
+      ${['custom-rest'].includes(preset.id) ? `
+        <label>Auth style</label>
+        <select id="iAuthKind"><option value="bearer">Bearer token</option><option value="header">Custom header</option><option value="query">Query param</option><option value="none">None</option></select>
+        <label>Health check path</label><input id="iTestPath" value="/" placeholder="/health">` : ''}
+      <div class="actions"><button class="btn ghost" id="iCancel">Cancel</button><button class="btn" id="iSave">Save connection</button></div>`);
+    $('#iCancel', m).onclick = () => m.remove();
+    $('#iSave', m).onclick = async () => {
+      const body = { preset: preset.id, name: $('#iName', m)?.value };
+      if ($('#iUrl', m)) body.baseUrl = $('#iUrl', m).value;
+      if ($('#iSecret', m)) body.secret = $('#iSecret', m).value;
+      if ($('#iAuthKind', m)) body.authKind = $('#iAuthKind', m).value;
+      if ($('#iTestPath', m)) body.testPath = $('#iTestPath', m).value;
+      try {
+        const integ = await api('POST', '/api/integrations', body);
+        m.remove();
+        toast('Connection saved 🔌');
+        // immediately test it so the user gets real feedback
+        try {
+          const { result } = await api('POST', `/api/integrations/${integ.id}/test`, {});
+          toast(result.sandbox ? 'Saved — test it live in the installed app' : result.ok ? 'Connected ✅' : `Test: ${result.detail}`, !result.ok && !result.sandbox);
+        } catch { /* test is best-effort */ }
+        navigate();
+      } catch (err) { toast(err.message, true); }
+    };
+  }
+
+  $('.page', main).addEventListener('click', async (e) => {
+    const t = e.target;
+    const presetBtn = t.closest('[data-preset]');
+    if (presetBtn) { openForm(presets.find((p) => p.id === presetBtn.dataset.preset)); return; }
+    if (t.dataset.test) {
+      t.disabled = true; t.textContent = '⏳ testing…';
+      try {
+        const { result } = await api('POST', `/api/integrations/${t.dataset.test}/test`, {});
+        toast(result.sandbox ? result.detail : result.ok ? `Connected (${result.ms}ms) ✅` : `Failed: ${result.detail}`, !result.ok && !result.sandbox);
+      } catch (err) { toast(err.message, true); }
+      navigate();
+    } else if (t.dataset.toggle) {
+      const [id, enabled] = t.dataset.toggle.split(':');
+      await api('PATCH', `/api/integrations/${id}`, { enabled: enabled === 'true' }); navigate();
+    } else if (t.dataset.del) {
+      await api('DELETE', `/api/integrations/${t.dataset.del}`); navigate();
+    }
+  });
 };
 
 // ---------- boot ----------
