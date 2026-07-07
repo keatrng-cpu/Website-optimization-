@@ -153,6 +153,7 @@ $('#sidebar')?.addEventListener('click', (e) => { if (e.target.closest('a')) clo
 const NAV = [
   { label: 'Workspace' },
   { id: 'dashboard', icon: '⬢', name: 'Dashboard' },
+  { id: 'autopilot', icon: '🚀', name: 'Autopilot' },
   { id: 'helpers', icon: '👥', name: 'AI Team' },
   { id: 'brain', icon: '🧠', name: 'Brain' },
   { id: 'tasks', icon: '✅', name: 'Tasks' },
@@ -1159,6 +1160,94 @@ routes.howto = async (main) => {
       </div>
     </section>
   </div>`;
+};
+
+routes.autopilot = async (main) => {
+  await loadBoot();
+  const tools = await api('GET', '/api/agent/tools');
+  const toolCount = tools.length;
+  const provider = state.boot.settings.provider;
+  const live = provider !== 'offline' && (provider === 'ollama' || state.boot.settings.hasKey);
+  const examples = [
+    'Launch my new product with a website and a week of social content',
+    'Grow my audience — build an SEO brief and a content calendar',
+    'Set up a sales push: script, outreach plan, and follow-up tasks',
+    'Get me online: build and audit a website for my business',
+  ];
+  main.innerHTML = `<div class="page">
+    <div class="hero-band" style="margin-bottom:22px">
+      <div class="eyebrow">Autopilot</div>
+      <h1>Give one goal. Watch your team do the work.</h1>
+      <p class="lede">Describe an outcome and Autopilot breaks it into steps and <em>actually executes them</em> — creating tasks, building sites, running audits, generating content, and calling your connected tools. Not advice. Done work.</p>
+      <div class="row" style="gap:8px;margin-top:4px">
+        <input id="goal" placeholder="e.g. ${esc(examples[0])}" style="flex:1;min-width:260px" value="">
+        <button class="btn" id="go">🚀 Run Autopilot</button>
+      </div>
+      <div class="row" style="gap:6px;margin-top:12px;flex-wrap:wrap">
+        ${examples.map((e) => `<button class="chip" data-ex="${esc(e)}">${esc(e)}</button>`).join('')}
+      </div>
+      <div class="dim" style="margin-top:12px">
+        ${live
+          ? `⚡ <b>Live agent mode</b> — ${esc(provider)} plans and calls tools autonomously.`
+          : `🧭 <b>Planner mode</b> — runs a deterministic plan of real actions, no key needed. Connect a provider in <a href="#/settings">Settings</a> for full LLM-driven planning.`}
+      </div>
+    </div>
+    <div id="runOut"></div>
+    <details style="margin-top:20px">
+      <summary class="dim" style="cursor:pointer">What can Autopilot do? (${toolCount} tools)</summary>
+      <div class="grid c2" style="margin-top:12px">
+        ${tools.map((t) => `<div class="card"><b>${esc(t.name)}</b><p class="muted" style="margin-top:3px;font-size:12.5px">${esc(t.description)}</p></div>`).join('')}
+      </div>
+    </details>
+  </div>`;
+
+  const out = $('#runOut', main);
+  const toolIcon = { create_task: '✅', run_powerup: '⚡', create_website: '🌐', run_seo_audit: '🔍', generate_content_calendar: '📣', draft_email_campaign: '✉️', call_integration: '🔌', get_workspace_summary: '📊' };
+  const linkFor = (s) => {
+    if (s.tool === 'create_website' && s.result?.slug) return ` — <a href="/sites/${s.result.slug}" target="_blank">view site</a>`;
+    if (s.tool === 'run_powerup' && s.result?.id) return ` — <a href="#/documents/${s.result.id}">open doc</a>`;
+    if (s.tool === 'generate_content_calendar') return ` — <a href="#/marketing">open calendar</a>`;
+    if (s.tool === 'draft_email_campaign') return ` — <a href="#/marketing/emails">open email</a>`;
+    if (s.tool === 'create_task') return ` — <a href="#/tasks">open board</a>`;
+    if (s.tool === 'run_seo_audit') return ` — <a href="#/seo">open SEO</a>`;
+    return '';
+  };
+
+  async function run(goal) {
+    if (!goal.trim()) return;
+    $('#go', main).disabled = true; $('#go', main).textContent = '⏳ Working…';
+    out.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Autopilot is working on “${esc(goal)}”…</b></div></div>`;
+    try {
+      const res = await api('POST', '/api/agent/run', { goal });
+      out.innerHTML = `<div class="card">
+        <div class="row spread"><b>✅ Autopilot finished</b><span class="badge ${res.mode === 'provider' ? 'on' : 'acc'}">${res.mode === 'provider' ? 'live agent' : 'planner'}</span></div>
+        <p class="muted" style="margin:8px 0 14px">${esc(res.summary)}</p>
+        <div class="steps">
+          ${res.steps.map((s, i) => `
+            <div class="step">
+              <div class="step-n">${toolIcon[s.tool] || '•'}</div>
+              <div class="step-body">
+                <b>${esc(s.tool.replace(/_/g, ' '))}</b>${linkFor(s)}
+                <p class="muted" style="margin:4px 0 0">${s.result?.error ? '⚠️ ' + esc(s.result.error) : esc(JSON.stringify(s.result).slice(0, 180))}</p>
+              </div>
+            </div>`).join('')}
+        </div>
+        ${res.note ? `<p class="dim" style="margin-top:12px">ℹ️ ${esc(res.note)}</p>` : ''}
+      </div>`;
+      toast('Autopilot completed — results are live across your workspace 🚀');
+    } catch (e) {
+      out.innerHTML = `<div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div>`;
+    } finally {
+      $('#go', main).disabled = false; $('#go', main).textContent = '🚀 Run Autopilot';
+    }
+  }
+
+  $('#go', main).onclick = () => run($('#goal', main).value);
+  $('#goal', main).addEventListener('keydown', (e) => { if (e.key === 'Enter') run(e.target.value); });
+  $('.page', main).addEventListener('click', (e) => {
+    const ex = e.target.closest('[data-ex]');
+    if (ex) { $('#goal', main).value = ex.dataset.ex; run(ex.dataset.ex); }
+  });
 };
 
 routes.integrations = async (main) => {

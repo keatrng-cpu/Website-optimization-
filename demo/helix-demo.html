@@ -273,6 +273,12 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
   color: var(--accent2); font-variant-numeric: tabular-nums;
   min-width: 34px; letter-spacing: -.02em;
 }
+.chip {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 999px; padding: 6px 13px; font-size: 12.5px; text-align: left;
+  transition: color .15s, border-color .15s;
+}
+.chip:hover { color: var(--text); border-color: var(--accent); }
 .step-body b { font-size: 15px; }
 .step-body p { color: var(--muted); font-size: 13px; margin: 6px 0 12px; line-height: 1.55; }
 
@@ -1459,6 +1465,33 @@ function buildRequest(i, pathOverride) {
   return { url, headers };
 }
 
+// A general authenticated call through a registered integration. Bounded to
+// the host the user configured — the agent can only reach services the user
+// explicitly connected, never arbitrary URLs.
+async function callIntegration(i, { method = 'GET', path = '', body } = {}) {
+  const started = Date.now();
+  let url, headers;
+  if (i.type === 'webhook') {
+    url = i.baseUrl; headers = { 'content-type': 'application/json' };
+    method = 'POST';
+  } else {
+    const r = buildRequest(i, path);
+    url = r.url; headers = { ...r.headers };
+    if (body !== undefined) headers['content-type'] = 'application/json';
+  }
+  if (!/^https?:\/\//i.test(url)) throw new Error('integration has no valid base URL');
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = text.slice(0, 4000); }
+  return { ok: res.ok, status: res.status, ms: Date.now() - started, data };
+}
+
 // A genuine authenticated request. For webhooks/mcp we POST a small probe;
 // for REST we GET the health path. Returns a structured, non-secret result.
 async function testIntegration(i) {
@@ -1491,6 +1524,211 @@ async function testIntegration(i) {
   } catch (err) {
     return { ok: false, status: 0, ms: Date.now() - started, detail: err.message || 'connection failed', at: Date.now() };
   }
+}
+
+
+// Autonomous agent layer. Gives helpers real, executable tools that mutate the
+// workspace and call registered integrations. Two execution modes:
+//   • provider mode — a connected LLM plans and calls tools in a loop
+//   • offline planner — a deterministic goal→tool-sequence orchestrator that
+//     still performs REAL actions, so autonomy works with zero API keys.
+
+// Each tool: name, description, JSON-schema input, and an async run(ctx, args).
+// ctx = { store, ask } where ask(helperId, message) -> { text, engine }.
+function buildTools() {
+  return {
+    get_workspace_summary: {
+      description: 'Get counts and recent items across the whole workspace (tasks, sites, documents, calendar, automations, integrations).',
+      input_schema: { type: 'object', properties: {} },
+      async run(ctx) {
+        const s = ctx.store.state;
+        return {
+          openTasks: s.tasks.filter((t) => t.status !== 'done').map((t) => t.title),
+          sites: s.sites.map((x) => ({ name: x.name, slug: x.slug, live: x.published })),
+          documents: s.documents.length,
+          calendarPosts: s.calendar.length,
+          automations: s.automations.filter((a) => a.enabled).length,
+          integrations: s.integrations.filter((i) => i.enabled).map((i) => i.name),
+          lastSeoScore: s.seoAudits[0]?.score ?? null,
+        };
+      },
+    },
+    create_task: {
+      description: 'Create a task on the board, optionally assigned to a helper.',
+      input_schema: { type: 'object', properties: { title: { type: 'string' }, helperId: { type: 'string' }, priority: { type: 'string', enum: ['low', 'medium', 'high'] } }, required: ['title'] },
+      async run(ctx, { title, helperId, priority }) {
+        const task = { id: uid(), title: String(title), notes: '', status: 'todo', helperId: helperId || null, priority: priority || 'medium', createdAt: Date.now(), deliverableId: null };
+        ctx.store.state.tasks.unshift(task);
+        ctx.store.save();
+        return { created: task.title, id: task.id };
+      },
+    },
+    run_powerup: {
+      description: 'Run a power-up to produce a finished deliverable document. Valid ids: ' + Object.keys(POWERUP_MAP).join(', ') + '.',
+      input_schema: { type: 'object', properties: { powerupId: { type: 'string' }, inputs: { type: 'object' } }, required: ['powerupId'] },
+      async run(ctx, { powerupId, inputs = {} }) {
+        const pu = POWERUP_MAP[powerupId];
+        if (!pu) throw new Error(`unknown power-up "${powerupId}"`);
+        const { text, engine } = await ctx.ask(pu.helperId, pu.buildPrompt(inputs));
+        const doc = { id: uid(), title: pu.name, kind: 'powerup', helperId: pu.helperId, content: text, engine, source: pu.id, createdAt: Date.now() };
+        ctx.store.state.documents.unshift(doc);
+        ctx.store.save();
+        return { document: doc.title, id: doc.id };
+      },
+    },
+    create_website: {
+      description: 'Create and generate a website from the Brain, published live.',
+      input_schema: { type: 'object', properties: { name: { type: 'string' }, palette: { type: 'string' } }, required: ['name'] },
+      async run(ctx, { name, palette }) {
+        const s = ctx.store.state;
+        let slug = slugify(name);
+        while (s.sites.some((x) => x.slug === slug)) slug += '-' + uid().slice(0, 4);
+        const site = { id: uid(), name: String(name), slug, palette: PALETTES[palette] ? palette : 'midnight', sections: defaultSections(s.brain), published: true, createdAt: Date.now(), updatedAt: Date.now() };
+        s.sites.unshift(site);
+        ctx.store.save();
+        return { site: site.name, slug: site.slug, url: `/sites/${site.slug}` };
+      },
+    },
+    run_seo_audit: {
+      description: 'Run an on-page SEO audit on a Studio site (defaults to the most recent site).',
+      input_schema: { type: 'object', properties: { siteId: { type: 'string' } } },
+      async run(ctx, { siteId }) {
+        const s = ctx.store.state;
+        const site = siteId ? s.sites.find((x) => x.id === siteId) : s.sites[0];
+        if (!site) throw new Error('no site to audit — create one first');
+        const report = auditHTML(renderSite(site, s.brain), `Studio site: ${site.name}`);
+        report.id = uid();
+        s.seoAudits.unshift(report);
+        if (s.seoAudits.length > 50) s.seoAudits.length = 50;
+        ctx.store.save();
+        return { target: report.target, score: report.score, grade: report.grade, issues: report.failed };
+      },
+    },
+    generate_content_calendar: {
+      description: 'Generate a week of platform-native social posts.',
+      input_schema: { type: 'object', properties: { platforms: { type: 'array', items: { type: 'string' } } } },
+      async run(ctx, { platforms }) {
+        const plats = Array.isArray(platforms) && platforms.length ? platforms.map(String) : ['LinkedIn', 'Instagram', 'X'];
+        const angles = ['a customer pain point and how you solve it', 'a behind-the-scenes look', 'a practical tip', 'a myth debunked', 'a success story', 'a question that starts a conversation', 'your offer with a clear CTA'];
+        const created = [];
+        for (let i = 0; i < 7; i++) {
+          const platform = plats[i % plats.length];
+          const { text } = await ctx.ask('soshie', `Write ONE ${platform} post about ${angles[i]}. Return only the post text.`);
+          const date = new Date(Date.now() + i * 86_400_000).toISOString().slice(0, 10);
+          const post = { id: uid(), platform, content: text, date, status: 'draft', helperId: 'soshie', createdAt: Date.now() };
+          ctx.store.state.calendar.unshift(post);
+          created.push(platform);
+        }
+        ctx.store.save();
+        return { postsCreated: created.length, platforms: [...new Set(created)] };
+      },
+    },
+    draft_email_campaign: {
+      description: 'Draft an email campaign for a specific goal.',
+      input_schema: { type: 'object', properties: { goal: { type: 'string' } }, required: ['goal'] },
+      async run(ctx, { goal }) {
+        const { text } = await ctx.ask('emmie', `Write an email campaign for: ${goal}. Include subject, preheader, and body.`);
+        const subj = text.match(/subject[^:\n]*:\s*(.+)/i);
+        const email = { id: uid(), subject: (subj ? subj[1] : `Campaign: ${goal}`).slice(0, 120).replace(/[*_#]/g, '').trim(), preheader: '', body: text, audience: 'All subscribers', status: 'draft', createdAt: Date.now() };
+        ctx.store.state.emails.unshift(email);
+        ctx.store.save();
+        return { subject: email.subject, id: email.id };
+      },
+    },
+    call_integration: {
+      description: 'Make an authenticated request through a connected integration (by name or id). Use for live data (e.g. Stripe revenue) or to push results (e.g. a Slack webhook).',
+      input_schema: { type: 'object', properties: { integration: { type: 'string' }, method: { type: 'string' }, path: { type: 'string' }, body: {} }, required: ['integration'] },
+      async run(ctx, { integration, method, path, body }) {
+        const list = ctx.store.state.integrations.filter((i) => i.enabled);
+        const integ = list.find((i) => i.id === integration || i.name.toLowerCase() === String(integration).toLowerCase());
+        if (!integ) throw new Error(`no connected integration matching "${integration}"`);
+        const res = await callIntegration(integ, { method, path, body });
+        return { integration: integ.name, status: res.status, ok: res.ok, data: res.data };
+      },
+    },
+  };
+}
+
+function toolMeta() {
+  const tools = buildTools();
+  return Object.entries(tools).map(([name, t]) => ({ name, description: t.description, input_schema: t.input_schema }));
+}
+
+async function executeTool(ctx, name, args = {}) {
+  const tools = buildTools();
+  const tool = tools[name];
+  if (!tool) throw new Error(`unknown tool "${name}"`);
+  return tool.run(ctx, args || {});
+}
+
+const AGENT_SYSTEM = 'You are HELIX Autopilot, an autonomous operator for this business. Break the user\'s goal into steps and use the available tools to actually do the work. Prefer real actions (create tasks, build sites, run audits, generate content, call integrations) over describing them. When finished, stop calling tools and give a short summary of what you accomplished.';
+
+// Provider-driven loop. `callModel` is a stateful closure that owns the native
+// provider conversation and is called as:
+//   callModel({ goal })                        -> first turn
+//   callModel({ toolResults: [{ id, name, content }] })  -> subsequent turns
+// returning { type: 'final', text } or { type: 'tool_use', calls: [{ id, name, input }] }.
+async function runAgent(ctx, { goal, callModel, maxSteps = 8 }) {
+  const steps = [];
+  let action = await callModel({ goal });
+  for (let i = 0; i < maxSteps; i++) {
+    if (action.type === 'final') return { mode: 'provider', steps, summary: action.text };
+    const toolResults = [];
+    for (const call of action.calls) {
+      let result;
+      try { result = await executeTool(ctx, call.name, call.input); }
+      catch (e) { result = { error: e.message }; }
+      steps.push({ tool: call.name, args: call.input, result });
+      toolResults.push({ id: call.id, name: call.name, content: JSON.stringify(result).slice(0, 2000) });
+    }
+    action = await callModel({ toolResults });
+  }
+  return { mode: 'provider', steps, summary: 'Reached the step limit — see the actions completed so far.' };
+}
+
+// Deterministic offline planner: maps a goal to a real sequence of tool calls.
+// No LLM required — autonomy that works with zero keys.
+async function runPlanner(ctx, { goal }) {
+  const g = String(goal || '').toLowerCase();
+  const has = (...ws) => ws.some((w) => g.includes(w));
+  const plan = [];
+  const biz = ctx.store.state.brain.businessName || 'the business';
+
+  if (has('launch', 'product', 'release', 'new')) {
+    plan.push(['run_powerup', { powerupId: 'quarter-plan', inputs: { goal } }]);
+    plan.push(['create_task', { title: `Finalize launch plan for ${biz}`, helperId: 'gigi', priority: 'high' }]);
+  }
+  if (has('website', 'site', 'landing', 'launch', 'online', 'web')) {
+    plan.push(['create_website', { name: biz }]);
+    plan.push(['run_seo_audit', {}]);
+  }
+  if (has('market', 'social', 'content', 'grow', 'awareness', 'launch', 'audience')) {
+    plan.push(['generate_content_calendar', {}]);
+  }
+  if (has('email', 'newsletter', 'campaign', 'nurture')) {
+    plan.push(['draft_email_campaign', { goal }]);
+  }
+  if (has('sell', 'sales', 'revenue', 'pipeline', 'outreach')) {
+    plan.push(['run_powerup', { powerupId: 'sales-script', inputs: { offer: goal } }]);
+  }
+  if (has('seo', 'rank', 'search', 'traffic')) {
+    plan.push(['run_powerup', { powerupId: 'seo-brief', inputs: { topic: goal } }]);
+  }
+  // sensible default so any goal produces real output
+  if (!plan.length) {
+    plan.push(['run_powerup', { powerupId: 'quarter-plan', inputs: { goal } }]);
+    plan.push(['create_task', { title: goal.slice(0, 80) || 'Follow up on this goal', helperId: 'vizzy', priority: 'medium' }]);
+  }
+
+  const steps = [];
+  for (const [tool, args] of plan) {
+    let result;
+    try { result = await executeTool(ctx, tool, args); }
+    catch (e) { result = { error: e.message }; }
+    steps.push({ tool, args, result });
+  }
+  const summary = `Autopilot completed ${steps.filter((s) => !s.result?.error).length} action(s) toward: “${goal}”. Review the results in Tasks, Documents, Website Studio, and Marketing.`;
+  return { mode: 'offline-planner', steps, summary };
 }
 
 
@@ -1607,7 +1845,7 @@ function previewHTML(idOrSlug) {
 }
 
 // ---- the API router ----
-function handle(method, pathname, query, body) {
+async function handle(method, pathname, query, body) {
   const seg = pathname.split('/').filter(Boolean); // e.g. ['api','tasks','abc']
   const ok = (data, status = 200) => ({ status, data });
   const notFound = (msg = 'not found') => ({ status: 404, data: { error: msg } });
@@ -2009,6 +2247,25 @@ function handle(method, pathname, query, body) {
       break;
     }
 
+    case 'agent': {
+      const ctx = { store: { state: db, save }, ask: (helperId, message) => ask(helperId, message) };
+      if (p[1] === 'tools') return ok(toolMeta());
+      if (p[1] === 'act' && method === 'POST') {
+        const tools = buildTools();
+        if (!body.tool || !tools[body.tool]) return notFound(`unknown tool "${body.tool}"`);
+        try { return ok({ tool: body.tool, result: await tools[body.tool].run(ctx, body.args || {}) }); }
+        catch (e) { return bad(e.message); }
+      }
+      if (p[1] === 'run' && method === 'POST') {
+        if (!body.goal || !String(body.goal).trim()) return bad('goal is required');
+        const out = await runPlanner(ctx, { goal: String(body.goal) });
+        db.inbox.unshift({ id: uid(), title: `Autopilot ran: “${String(body.goal).slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, createdAt: Date.now() });
+        save();
+        return ok(out);
+      }
+      break;
+    }
+
     case 'analytics':
       return ok(analyticsSummary());
 
@@ -2066,7 +2323,7 @@ window.fetch = async (input, opts = {}) => {
     const u = new URL(url, location.href);
     let body = {};
     if (opts.body) { try { body = JSON.parse(opts.body); } catch { /* non-JSON */ } }
-    const r = HX.handle((opts.method || 'GET').toUpperCase(), u.pathname, Object.fromEntries(u.searchParams), body);
+    const r = await HX.handle((opts.method || 'GET').toUpperCase(), u.pathname, Object.fromEntries(u.searchParams), body);
     if (r.html !== undefined) return new Response(r.html, { status: r.status, headers: { 'content-type': 'text/html' } });
     return new Response(JSON.stringify(r.data), { status: r.status, headers: { 'content-type': 'application/json' } });
   }
@@ -2263,6 +2520,7 @@ $('#sidebar')?.addEventListener('click', (e) => { if (e.target.closest('a')) clo
 const NAV = [
   { label: 'Workspace' },
   { id: 'dashboard', icon: '⬢', name: 'Dashboard' },
+  { id: 'autopilot', icon: '🚀', name: 'Autopilot' },
   { id: 'helpers', icon: '👥', name: 'AI Team' },
   { id: 'brain', icon: '🧠', name: 'Brain' },
   { id: 'tasks', icon: '✅', name: 'Tasks' },
@@ -3270,6 +3528,94 @@ routes.howto = async (main) => {
       </div>
     </section>
   </div>`;
+};
+
+routes.autopilot = async (main) => {
+  await loadBoot();
+  const tools = await api('GET', '/api/agent/tools');
+  const toolCount = tools.length;
+  const provider = state.boot.settings.provider;
+  const live = provider !== 'offline' && (provider === 'ollama' || state.boot.settings.hasKey);
+  const examples = [
+    'Launch my new product with a website and a week of social content',
+    'Grow my audience — build an SEO brief and a content calendar',
+    'Set up a sales push: script, outreach plan, and follow-up tasks',
+    'Get me online: build and audit a website for my business',
+  ];
+  main.innerHTML = `<div class="page">
+    <div class="hero-band" style="margin-bottom:22px">
+      <div class="eyebrow">Autopilot</div>
+      <h1>Give one goal. Watch your team do the work.</h1>
+      <p class="lede">Describe an outcome and Autopilot breaks it into steps and <em>actually executes them</em> — creating tasks, building sites, running audits, generating content, and calling your connected tools. Not advice. Done work.</p>
+      <div class="row" style="gap:8px;margin-top:4px">
+        <input id="goal" placeholder="e.g. ${esc(examples[0])}" style="flex:1;min-width:260px" value="">
+        <button class="btn" id="go">🚀 Run Autopilot</button>
+      </div>
+      <div class="row" style="gap:6px;margin-top:12px;flex-wrap:wrap">
+        ${examples.map((e) => `<button class="chip" data-ex="${esc(e)}">${esc(e)}</button>`).join('')}
+      </div>
+      <div class="dim" style="margin-top:12px">
+        ${live
+          ? `⚡ <b>Live agent mode</b> — ${esc(provider)} plans and calls tools autonomously.`
+          : `🧭 <b>Planner mode</b> — runs a deterministic plan of real actions, no key needed. Connect a provider in <a href="#/settings">Settings</a> for full LLM-driven planning.`}
+      </div>
+    </div>
+    <div id="runOut"></div>
+    <details style="margin-top:20px">
+      <summary class="dim" style="cursor:pointer">What can Autopilot do? (${toolCount} tools)</summary>
+      <div class="grid c2" style="margin-top:12px">
+        ${tools.map((t) => `<div class="card"><b>${esc(t.name)}</b><p class="muted" style="margin-top:3px;font-size:12.5px">${esc(t.description)}</p></div>`).join('')}
+      </div>
+    </details>
+  </div>`;
+
+  const out = $('#runOut', main);
+  const toolIcon = { create_task: '✅', run_powerup: '⚡', create_website: '🌐', run_seo_audit: '🔍', generate_content_calendar: '📣', draft_email_campaign: '✉️', call_integration: '🔌', get_workspace_summary: '📊' };
+  const linkFor = (s) => {
+    if (s.tool === 'create_website' && s.result?.slug) return ` — <a href="/sites/${s.result.slug}" target="_blank">view site</a>`;
+    if (s.tool === 'run_powerup' && s.result?.id) return ` — <a href="#/documents/${s.result.id}">open doc</a>`;
+    if (s.tool === 'generate_content_calendar') return ` — <a href="#/marketing">open calendar</a>`;
+    if (s.tool === 'draft_email_campaign') return ` — <a href="#/marketing/emails">open email</a>`;
+    if (s.tool === 'create_task') return ` — <a href="#/tasks">open board</a>`;
+    if (s.tool === 'run_seo_audit') return ` — <a href="#/seo">open SEO</a>`;
+    return '';
+  };
+
+  async function run(goal) {
+    if (!goal.trim()) return;
+    $('#go', main).disabled = true; $('#go', main).textContent = '⏳ Working…';
+    out.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Autopilot is working on “${esc(goal)}”…</b></div></div>`;
+    try {
+      const res = await api('POST', '/api/agent/run', { goal });
+      out.innerHTML = `<div class="card">
+        <div class="row spread"><b>✅ Autopilot finished</b><span class="badge ${res.mode === 'provider' ? 'on' : 'acc'}">${res.mode === 'provider' ? 'live agent' : 'planner'}</span></div>
+        <p class="muted" style="margin:8px 0 14px">${esc(res.summary)}</p>
+        <div class="steps">
+          ${res.steps.map((s, i) => `
+            <div class="step">
+              <div class="step-n">${toolIcon[s.tool] || '•'}</div>
+              <div class="step-body">
+                <b>${esc(s.tool.replace(/_/g, ' '))}</b>${linkFor(s)}
+                <p class="muted" style="margin:4px 0 0">${s.result?.error ? '⚠️ ' + esc(s.result.error) : esc(JSON.stringify(s.result).slice(0, 180))}</p>
+              </div>
+            </div>`).join('')}
+        </div>
+        ${res.note ? `<p class="dim" style="margin-top:12px">ℹ️ ${esc(res.note)}</p>` : ''}
+      </div>`;
+      toast('Autopilot completed — results are live across your workspace 🚀');
+    } catch (e) {
+      out.innerHTML = `<div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div>`;
+    } finally {
+      $('#go', main).disabled = false; $('#go', main).textContent = '🚀 Run Autopilot';
+    }
+  }
+
+  $('#go', main).onclick = () => run($('#goal', main).value);
+  $('#goal', main).addEventListener('keydown', (e) => { if (e.key === 'Enter') run(e.target.value); });
+  $('.page', main).addEventListener('click', (e) => {
+    const ex = e.target.closest('[data-ex]');
+    if (ex) { $('#goal', main).value = ex.dataset.ex; run(ex.dataset.ex); }
+  });
 };
 
 routes.integrations = async (main) => {

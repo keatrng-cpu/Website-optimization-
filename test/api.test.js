@@ -372,6 +372,88 @@ test('ecosystem intelligence: AI references real workspace state', async () => {
   await api('DELETE', `/api/chats/${chat.data.id}`);
 });
 
+test('agent: single tool execution performs a real action', async () => {
+  const tools = await api('GET', '/api/agent/tools');
+  assert.ok(tools.data.find((t) => t.name === 'create_website'));
+  assert.ok(tools.data.find((t) => t.name === 'call_integration'));
+
+  const act = await api('POST', '/api/agent/act', { tool: 'create_task', args: { title: 'Agent-made task', priority: 'high' } });
+  assert.equal(act.status, 200);
+  assert.ok(act.data.result.id);
+  const tasks = await api('GET', '/api/tasks');
+  assert.ok(tasks.data.find((t) => t.title === 'Agent-made task'), 'tool really created the task');
+
+  const unknown = await api('POST', '/api/agent/act', { tool: 'nope', args: {} });
+  assert.equal(unknown.status, 404);
+});
+
+test('agent: offline planner autonomously produces real artifacts', async () => {
+  const before = (await api('GET', '/api/sites')).data.length;
+  const run = await api('POST', '/api/agent/run', { goal: 'Launch my new product with a website and social content' });
+  assert.equal(run.status, 200);
+  assert.equal(run.data.mode, 'offline-planner');
+  assert.ok(run.data.steps.length >= 3, 'planner should take several real steps');
+  const toolsUsed = run.data.steps.map((s) => s.tool);
+  assert.ok(toolsUsed.includes('create_website'), 'should build a site');
+  assert.ok(toolsUsed.includes('generate_content_calendar'), 'should generate content');
+
+  const after = (await api('GET', '/api/sites')).data.length;
+  assert.equal(after, before + 1, 'a real site was created');
+  const cal = await api('GET', '/api/calendar');
+  assert.ok(cal.data.length >= 7, 'real posts were generated');
+  const inbox = await api('GET', '/api/inbox');
+  assert.ok(inbox.data.some((i) => i.title.startsWith('Autopilot ran')), 'autopilot logged to inbox');
+});
+
+test('agent: call_integration makes a real authenticated request', async () => {
+  const http = await import('node:http');
+  let hits = 0, sawToken = null;
+  const mock = http.createServer((rq, rs) => { hits++; sawToken = rq.headers['authorization']; rs.writeHead(200); rs.end('{"revenue": 4200}'); });
+  await new Promise((r) => mock.listen(0, r));
+  const url = `http://127.0.0.1:${mock.address().port}`;
+
+  const integ = await api('POST', '/api/integrations', { preset: 'custom-rest', name: 'FakeStripe', baseUrl: url, testPath: '/', authKind: 'bearer', secret: 'tok-42' });
+  const act = await api('POST', '/api/agent/act', {
+    tool: 'call_integration',
+    args: { integration: 'FakeStripe', method: 'GET', path: '/v1/balance' },
+  });
+  assert.equal(act.status, 200);
+  assert.equal(act.data.result.ok, true);
+  assert.equal(act.data.result.data.revenue, 4200, 'agent received real response data');
+  assert.equal(sawToken, 'Bearer tok-42', 'agent sent the stored credential');
+  assert.ok(hits >= 1);
+
+  await api('DELETE', `/api/integrations/${integ.data.id}`);
+  await new Promise((r) => mock.close(r));
+});
+
+test('agent: provider loop orchestrates tool calls (stub model)', async () => {
+  // Exercise runAgent directly with a fake tool-calling model — proves the
+  // orchestration (execute tool -> feed result back -> finish) without a key.
+  const { runAgent } = await import('../server/agent.js');
+  const { createStore } = await import('../server/store.js');
+  const os = await import('node:os'); const fsm = await import('node:fs'); const pth = await import('node:path');
+  const dir = fsm.mkdtempSync(pth.join(os.tmpdir(), 'helix-agent-'));
+  const store = createStore(dir);
+  store.state.brain.businessName = 'Stub Co';
+  const ctx = { store, ask: async () => ({ text: 'ok', engine: 'offline' }) };
+
+  let turn = 0;
+  const stub = async (input) => {
+    turn++;
+    if (turn === 1) { assert.equal(input.goal, 'do it'); return { type: 'tool_use', calls: [{ id: 'c1', name: 'create_task', input: { title: 'Stub task' } }] }; }
+    if (turn === 2) { assert.ok(input.toolResults[0].content.includes('Stub task')); return { type: 'final', text: 'Created one task.' }; }
+    throw new Error('too many turns');
+  };
+  const out = await runAgent(ctx, { goal: 'do it', callModel: stub });
+  assert.equal(out.mode, 'provider');
+  assert.equal(out.summary, 'Created one task.');
+  assert.equal(out.steps.length, 1);
+  assert.equal(store.state.tasks[0].title, 'Stub task', 'orchestrated tool really ran');
+  store.close();
+  fsm.rmSync(dir, { recursive: true, force: true });
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

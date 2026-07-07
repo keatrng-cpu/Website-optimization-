@@ -51,7 +51,7 @@ window.fetch = async (input, opts = {}) => {
     const u = new URL(url, location.href);
     let body = {};
     if (opts.body) { try { body = JSON.parse(opts.body); } catch { /* non-JSON */ } }
-    const r = HX.handle((opts.method || 'GET').toUpperCase(), u.pathname, Object.fromEntries(u.searchParams), body);
+    const r = await HX.handle((opts.method || 'GET').toUpperCase(), u.pathname, Object.fromEntries(u.searchParams), body);
     if (r.html !== undefined) return new Response(r.html, { status: r.status, headers: { 'content-type': 'text/html' } });
     return new Response(JSON.stringify(r.data), { status: r.status, headers: { 'content-type': 'application/json' } });
   }
@@ -101,6 +101,7 @@ const js = [
   port('server/sites.js'),
   port('server/seo.js'),
   port('server/integrations.js'),
+  port('server/agent.js'),
   read('demo/browser-backend.js'),
   '})();',
   glue,

@@ -65,6 +65,63 @@ const PROVIDERS = { anthropic: callAnthropic, openai: callOpenAI, ollama: callOl
  * generate({ settings, helper, brain, system, messages }) → { text, engine }
  * messages: [{role:'user'|'assistant', content}] — last one is the request.
  */
+// Build a stateful tool-calling closure for the agent loop, or null when no
+// tool-capable provider is configured. Contract matches runAgent's callModel.
+export function makeToolCaller({ settings, system, tools }) {
+  const provider = settings?.provider;
+  if (!(provider === 'anthropic' || provider === 'openai') || !settings.apiKey) return null;
+
+  if (provider === 'anthropic') {
+    const messages = [];
+    const anthTools = tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+    return async function callModel(turn) {
+      if (turn.goal) messages.push({ role: 'user', content: turn.goal });
+      else if (turn.toolResults) {
+        messages.push({ role: 'user', content: turn.toolResults.map((r) => ({ type: 'tool_result', tool_use_id: r.id, content: r.content })) });
+      }
+      const res = await fetch((settings.baseUrl || 'https://api.anthropic.com') + '/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': settings.apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: settings.model || 'claude-sonnet-5', max_tokens: 2048, system, tools: anthTools, messages }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      const data = await res.json();
+      messages.push({ role: 'assistant', content: data.content });
+      const calls = (data.content || []).filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, name: b.name, input: b.input }));
+      if (calls.length) return { type: 'tool_use', calls };
+      return { type: 'final', text: (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('') };
+    };
+  }
+
+  // openai (and compatible)
+  const messages = [{ role: 'system', content: system }];
+  const oaTools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+  return async function callModel(turn) {
+    if (turn.goal) messages.push({ role: 'user', content: turn.goal });
+    else if (turn.toolResults) {
+      for (const r of turn.toolResults) messages.push({ role: 'tool', tool_call_id: r.id, content: r.content });
+    }
+    const res = await fetch((settings.baseUrl || 'https://api.openai.com') + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${settings.apiKey}` },
+      body: JSON.stringify({ model: settings.model || 'gpt-4o-mini', messages, tools: oaTools }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`openai ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    const msg = data.choices?.[0]?.message || {};
+    messages.push(msg);
+    const tc = msg.tool_calls || [];
+    if (tc.length) {
+      return { type: 'tool_use', calls: tc.map((c) => ({ id: c.id, name: c.function.name, input: safeParse(c.function.arguments) })) };
+    }
+    return { type: 'final', text: msg.content || '' };
+  };
+}
+
+function safeParse(s) { try { return JSON.parse(s); } catch { return {}; } }
+
 export async function generate({ settings, helper, brain, system, messages, workspace }) {
   const provider = PROVIDERS[settings?.provider];
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');

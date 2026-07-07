@@ -111,6 +111,33 @@ function buildRequest(i, pathOverride) {
   return { url, headers };
 }
 
+// A general authenticated call through a registered integration. Bounded to
+// the host the user configured — the agent can only reach services the user
+// explicitly connected, never arbitrary URLs.
+export async function callIntegration(i, { method = 'GET', path = '', body } = {}) {
+  const started = Date.now();
+  let url, headers;
+  if (i.type === 'webhook') {
+    url = i.baseUrl; headers = { 'content-type': 'application/json' };
+    method = 'POST';
+  } else {
+    const r = buildRequest(i, path);
+    url = r.url; headers = { ...r.headers };
+    if (body !== undefined) headers['content-type'] = 'application/json';
+  }
+  if (!/^https?:\/\//i.test(url)) throw new Error('integration has no valid base URL');
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = text.slice(0, 4000); }
+  return { ok: res.ok, status: res.status, ms: Date.now() - started, data };
+}
+
 // A genuine authenticated request. For webhooks/mcp we POST a small probe;
 // for REST we GET the health path. Returns a structured, non-secret result.
 export async function testIntegration(i) {

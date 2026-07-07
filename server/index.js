@@ -6,13 +6,14 @@ import { fileURLToPath } from 'node:url';
 import { createRouter, readBody, sendJSON } from './router.js';
 import { createStore, uid } from './store.js';
 import { HELPERS, HELPER_MAP, systemPrompt } from './helpers.js';
-import { generate } from './ai.js';
 import { POWERUPS, POWERUP_MAP } from './powerups.js';
 import { computeNextRun, runAutomation, startScheduler } from './automations.js';
 import { PALETTES, slugify, defaultSections, renderSite, parseSiteContent, siteGenPrompt, applyGeneratedContent } from './sites.js';
 import { auditHTML, fetchAndAudit } from './seo.js';
 import { recordView, summarize } from './analytics.js';
 import { PRESETS, PRESET_MAP, redactIntegration, testIntegration } from './integrations.js';
+import { generate, makeToolCaller } from './ai.js';
+import { toolMeta, buildTools, runAgent, runPlanner, AGENT_SYSTEM } from './agent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -503,6 +504,43 @@ export function createApp({ dataDir } = {}) {
     integ.lastTest = result;
     store.save();
     sendJSON(res, 200, { integration: redactIntegration(integ), result });
+  });
+
+  // ---------- agent / autopilot ----------
+  const agentCtx = () => ({ store, ask: (helperId, message) => askHelper(helperId, [{ role: 'user', content: message }]) });
+  router.get('/api/agent/tools', (req, res) => sendJSON(res, 200, toolMeta()));
+  router.post('/api/agent/act', async (req, res) => {
+    const { tool, args } = await readBody(req);
+    if (!tool) return bad(res, 'tool is required');
+    try {
+      const tools = buildTools();
+      if (!tools[tool]) return notFound(res, `unknown tool "${tool}"`);
+      const result = await tools[tool].run(agentCtx(), args || {});
+      sendJSON(res, 200, { tool, result });
+    } catch (e) { sendJSON(res, 400, { error: e.message }); }
+  });
+  router.post('/api/agent/run', async (req, res) => {
+    const { goal } = await readBody(req);
+    if (!goal || !String(goal).trim()) return bad(res, 'goal is required');
+    const ctx = agentCtx();
+    const callModel = makeToolCaller({ settings: S().settings, system: AGENT_SYSTEM, tools: toolMeta() });
+    try {
+      let out;
+      if (callModel) {
+        try { out = await runAgent(ctx, { goal: String(goal), callModel }); }
+        catch (e) {
+          console.error('[agent] provider run failed, falling back to planner:', e.message);
+          out = await runPlanner(ctx, { goal: String(goal) });
+          out.note = 'The connected provider errored, so Autopilot used the deterministic planner instead.';
+        }
+      } else {
+        out = await runPlanner(ctx, { goal: String(goal) });
+      }
+      // record what Autopilot did to the inbox
+      S().inbox.unshift({ id: uid(), title: `Autopilot ran: “${String(goal).slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, createdAt: Date.now() });
+      store.save();
+      sendJSON(res, 200, out);
+    } catch (e) { sendJSON(res, 500, { error: e.message }); }
   });
 
   // ---------- settings / export ----------

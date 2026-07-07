@@ -111,7 +111,7 @@ function previewHTML(idOrSlug) {
 }
 
 // ---- the API router ----
-function handle(method, pathname, query, body) {
+async function handle(method, pathname, query, body) {
   const seg = pathname.split('/').filter(Boolean); // e.g. ['api','tasks','abc']
   const ok = (data, status = 200) => ({ status, data });
   const notFound = (msg = 'not found') => ({ status: 404, data: { error: msg } });
@@ -509,6 +509,25 @@ function handle(method, pathname, query, body) {
       if (method === 'DELETE') {
         db.integrations.splice(db.integrations.indexOf(integ), 1); save();
         return ok({ ok: true });
+      }
+      break;
+    }
+
+    case 'agent': {
+      const ctx = { store: { state: db, save }, ask: (helperId, message) => ask(helperId, message) };
+      if (p[1] === 'tools') return ok(toolMeta());
+      if (p[1] === 'act' && method === 'POST') {
+        const tools = buildTools();
+        if (!body.tool || !tools[body.tool]) return notFound(`unknown tool "${body.tool}"`);
+        try { return ok({ tool: body.tool, result: await tools[body.tool].run(ctx, body.args || {}) }); }
+        catch (e) { return bad(e.message); }
+      }
+      if (p[1] === 'run' && method === 'POST') {
+        if (!body.goal || !String(body.goal).trim()) return bad('goal is required');
+        const out = await runPlanner(ctx, { goal: String(body.goal) });
+        db.inbox.unshift({ id: uid(), title: `Autopilot ran: “${String(body.goal).slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, createdAt: Date.now() });
+        save();
+        return ok(out);
       }
       break;
     }

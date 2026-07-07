@@ -71,6 +71,18 @@ websites, and campaigns all use it.
 
 ## What's inside
 
+- **🚀 Autopilot** — give one goal ("launch my product with a website and social
+  content") and the agent breaks it into steps and *actually executes them*:
+  creating tasks, building sites, running audits, generating content, and
+  calling your connected integrations. With a provider connected it plans
+  autonomously via LLM tool-calling; with no key it runs a deterministic
+  planner that still performs real actions.
+- **🔌 Integrations** — bring-your-own-key connectors for REST APIs, webhooks,
+  and MCP servers (Stripe, HubSpot, Slack, OpenAI, Ollama, and more). Real
+  authenticated calls; keys stay in local `data/db.json` and are never exposed.
+- **Ecosystem intelligence** — every helper sees a live snapshot of the whole
+  workspace (open tasks, live sites, latest SEO score, connected tools) and
+  references it, so the team acts on what's already been done.
 - **AI Team chat** — persistent conversations with all 12 specialists.
 - **🧠 Brain** — business profile + knowledge items injected into every generation.
 - **⚡ Power-ups** — 12 one-click deliverables (content plans, sales scripts,
