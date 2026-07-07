@@ -372,6 +372,30 @@ test('ecosystem intelligence: AI references real workspace state', async () => {
   await api('DELETE', `/api/chats/${chat.data.id}`);
 });
 
+test('resilience: auditing an unreachable external URL degrades gracefully', async () => {
+  // Port 1 on loopback refuses instantly — stands in for any unreachable site
+  // (e.g. a network-blocked domain) without depending on external network.
+  const res = await api('POST', '/api/seo/audit', { url: 'http://127.0.0.1:1/' });
+  assert.equal(res.status, 502, 'unreachable URL should be a clean 502, not a crash');
+  assert.match(res.data.error, /could not fetch/i);
+
+  const badScheme = await api('POST', '/api/seo/audit', { url: 'ftp://example.com' });
+  assert.equal(badScheme.status, 400, 'non-http scheme is rejected up front');
+
+  // the server keeps serving normally afterwards
+  const boot = await api('GET', '/api/bootstrap');
+  assert.equal(boot.status, 200);
+});
+
+test('resilience: an integration test against an unreachable host reports failure, not a crash', async () => {
+  const integ = await api('POST', '/api/integrations', { preset: 'custom-rest', name: 'Dead Host', baseUrl: 'http://127.0.0.1:1', testPath: '/', authKind: 'none' });
+  const test = await api('POST', `/api/integrations/${integ.data.id}/test`, {});
+  assert.equal(test.status, 200);
+  assert.equal(test.data.result.ok, false, 'unreachable host => failed, handled');
+  assert.ok(test.data.result.detail, 'a human-readable reason is returned');
+  await api('DELETE', `/api/integrations/${integ.data.id}`);
+});
+
 test('agent: single tool execution performs a real action', async () => {
   const tools = await api('GET', '/api/agent/tools');
   assert.ok(tools.data.find((t) => t.name === 'create_website'));
