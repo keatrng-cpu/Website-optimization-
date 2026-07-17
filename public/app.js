@@ -1308,7 +1308,7 @@ routes.integrations = async (main) => {
       <h2>${preset.icon} Connect ${esc(preset.name)}</h2>
       <p class="dim">${esc(preset.desc)}</p>
       <label>Display name</label><input id="iName" value="${esc(preset.name)}">
-      ${needsUrl && !urlSecret ? `<label>Base URL</label><input id="iUrl" placeholder="https://api.example.com" value="${esc(preset.baseUrl || '')}">` : ''}
+      ${needsUrl && !urlSecret ? `<label>Base URL</label><input id="iUrl" placeholder="${esc(preset.urlNote || 'https://api.example.com')}" value="${esc(preset.baseUrl || '')}">${preset.urlNote ? `<div class="dim" style="margin-top:4px">e.g. ${esc(preset.urlNote)}</div>` : ''}` : ''}
       ${preset.auth?.kind !== 'none' || urlSecret
         ? `<label>${esc(preset.keyLabel)}${urlSecret ? '' : ' <span class="dim">(stored locally, never shown again)</span>'}</label>
            <input id="iSecret" type="password" placeholder="${esc(preset.keyHint || '')}">`

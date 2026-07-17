@@ -1412,6 +1412,74 @@ const PRESETS = [
     desc: 'A fully local LLM. Zero cloud, zero cost.',
   },
   {
+    id: 'figma', name: 'Figma', icon: '🎨', category: 'Design', type: 'rest',
+    baseUrl: 'https://api.figma.com', testPath: '/v1/me',
+    auth: { kind: 'header', name: 'X-Figma-Token' }, keyLabel: 'Personal access token', keyHint: 'figd_…',
+    desc: 'Pull designs, components, and files into your workflow.',
+  },
+  {
+    id: 'supabase', name: 'Supabase', icon: '🟢', category: 'Backend', type: 'rest',
+    baseUrl: '', testPath: '/rest/v1/', auth: { kind: 'header', name: 'apikey' },
+    keyLabel: 'anon or service key', keyHint: 'eyJ…', urlNote: 'https://YOUR-PROJECT.supabase.co',
+    desc: 'Your database, auth, and storage backend. Set the base URL to your project URL.',
+  },
+  {
+    id: 'vercel', name: 'Vercel', icon: '▲', category: 'Deploy', type: 'rest',
+    baseUrl: 'https://api.vercel.com', testPath: '/v2/user',
+    auth: { kind: 'bearer' }, keyLabel: 'Access token', keyHint: 'vercel token',
+    desc: 'Deploy and manage the sites HELIX builds.',
+  },
+  {
+    id: 'semrush', name: 'Semrush', icon: '📈', category: 'SEO', type: 'rest',
+    baseUrl: 'https://api.semrush.com', testPath: '/',
+    auth: { kind: 'query', name: 'key' }, keyLabel: 'API key', keyHint: '',
+    desc: 'Keyword, backlink, and competitor intelligence.',
+  },
+  {
+    id: 'windsor', name: 'Windsor.ai', icon: '🌬️', category: 'Analytics', type: 'rest',
+    baseUrl: 'https://connectors.windsor.ai', testPath: '/all',
+    auth: { kind: 'query', name: 'api_key' }, keyLabel: 'API key', keyHint: '',
+    desc: 'Unified ads & analytics across 350+ sources (GA4, Meta, Google Ads…).',
+  },
+  {
+    id: 'sentry', name: 'Sentry', icon: '🛡️', category: 'Monitoring', type: 'rest',
+    baseUrl: 'https://sentry.io', testPath: '/api/0/',
+    auth: { kind: 'bearer' }, keyLabel: 'Auth token', keyHint: 'sntrys_…',
+    desc: 'Error and performance monitoring for your live sites.',
+  },
+  {
+    id: 'notion', name: 'Notion', icon: '📔', category: 'Docs', type: 'rest',
+    baseUrl: 'https://api.notion.com', testPath: '/v1/users/me',
+    auth: { kind: 'bearer' }, extraHeaders: { 'Notion-Version': '2022-06-28' },
+    keyLabel: 'Integration secret', keyHint: 'secret_… / ntn_…',
+    desc: 'Sync docs, wikis, and knowledge into your Brain.',
+  },
+  {
+    id: 'airtable', name: 'Airtable', icon: '🗃️', category: 'Data', type: 'rest',
+    baseUrl: 'https://api.airtable.com', testPath: '/v0/meta/whoami',
+    auth: { kind: 'bearer' }, keyLabel: 'Personal access token', keyHint: 'pat…',
+    desc: 'Spreadsheet-database for customers, content, and pipelines.',
+  },
+  {
+    id: 'shopify', name: 'Shopify', icon: '🛍️', category: 'E-commerce', type: 'rest',
+    baseUrl: '', testPath: '/admin/api/2024-01/shop.json',
+    auth: { kind: 'header', name: 'X-Shopify-Access-Token' },
+    keyLabel: 'Admin API token', keyHint: 'shpat_…', urlNote: 'https://YOUR-STORE.myshopify.com',
+    desc: 'Products, orders, and customers. Set the base URL to your store domain.',
+  },
+  {
+    id: 'mailchimp', name: 'Mailchimp', icon: '🐵', category: 'Email', type: 'rest',
+    baseUrl: '', testPath: '/3.0/ping', auth: { kind: 'bearer' },
+    keyLabel: 'API key', keyHint: 'key-usXX', urlNote: 'https://usXX.api.mailchimp.com',
+    desc: 'Audiences and email automation. Base URL is https://<dc>.api.mailchimp.com.',
+  },
+  {
+    id: 'make', name: 'Make (webhook)', icon: '🔧', category: 'Automation', type: 'webhook',
+    baseUrl: '', testPath: '', auth: { kind: 'none' }, keyLabel: 'Webhook URL', keyHint: 'https://hook.…make.com/…',
+    urlIsSecret: false,
+    desc: 'Trigger Make / Zapier / n8n scenarios with your data.',
+  },
+  {
     id: 'custom-rest', name: 'Custom REST API', icon: '🔗', category: 'Custom', type: 'rest',
     baseUrl: '', testPath: '/', auth: { kind: 'bearer' }, keyLabel: 'Token (optional)', keyHint: '',
     desc: 'Any HTTP JSON API. You set the base URL, auth, and a health path.',
@@ -3676,7 +3744,7 @@ routes.integrations = async (main) => {
       <h2>${preset.icon} Connect ${esc(preset.name)}</h2>
       <p class="dim">${esc(preset.desc)}</p>
       <label>Display name</label><input id="iName" value="${esc(preset.name)}">
-      ${needsUrl && !urlSecret ? `<label>Base URL</label><input id="iUrl" placeholder="https://api.example.com" value="${esc(preset.baseUrl || '')}">` : ''}
+      ${needsUrl && !urlSecret ? `<label>Base URL</label><input id="iUrl" placeholder="${esc(preset.urlNote || 'https://api.example.com')}" value="${esc(preset.baseUrl || '')}">${preset.urlNote ? `<div class="dim" style="margin-top:4px">e.g. ${esc(preset.urlNote)}</div>` : ''}` : ''}
       ${preset.auth?.kind !== 'none' || urlSecret
         ? `<label>${esc(preset.keyLabel)}${urlSecret ? '' : ' <span class="dim">(stored locally, never shown again)</span>'}</label>
            <input id="iSecret" type="password" placeholder="${esc(preset.keyHint || '')}">`

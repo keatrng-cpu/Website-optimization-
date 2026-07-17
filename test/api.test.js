@@ -319,6 +319,12 @@ test('integrations: presets, create, real authenticated test, redaction, AI awar
   const presets = await api('GET', '/api/integrations/presets');
   assert.ok(presets.data.find((p) => p.id === 'stripe'));
   assert.ok(presets.data.find((p) => p.id === 'custom-rest'));
+  // the full business-optimization stack is available as one-click presets
+  for (const id of ['figma', 'supabase', 'vercel', 'semrush', 'windsor', 'sentry', 'notion', 'shopify']) {
+    const p = presets.data.find((x) => x.id === id);
+    assert.ok(p, `preset "${id}" should exist`);
+    assert.ok(p.category && p.type && p.auth, `preset "${id}" should be fully specified`);
+  }
 
   // create a connection pointing at the mock, with a valid key
   const created = await api('POST', '/api/integrations', {
