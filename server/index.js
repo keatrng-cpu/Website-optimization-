@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRouter, readBody, sendJSON } from './router.js';
 import { createStore, uid } from './store.js';
-import { HELPERS, HELPER_MAP, systemPrompt } from './helpers.js';
+import { HELPERS, HELPER_MAP, systemPrompt, clean } from './helpers.js';
 import { POWERUPS, POWERUP_MAP } from './powerups.js';
 import { computeNextRun, runAutomation, startScheduler } from './automations.js';
 import { PALETTES, slugify, defaultSections, renderSite, parseSiteContent, siteGenPrompt, applyGeneratedContent } from './sites.js';
@@ -114,9 +114,10 @@ export function createApp({ dataDir } = {}) {
   router.post('/api/chats/:id/messages', async (req, res, { id }) => {
     const chat = S().chats.find((c) => c.id === id);
     if (!chat) return notFound(res);
-    const { content } = await readBody(req);
-    if (!content || !String(content).trim()) return bad(res, 'content is required');
-    chat.messages.push({ role: 'user', content: String(content), at: Date.now() });
+    const { content: raw } = await readBody(req);
+    if (!raw || !String(raw).trim()) return bad(res, 'content is required');
+    const content = clean(raw);
+    chat.messages.push({ role: 'user', content, at: Date.now() });
     if (chat.messages.length === 1) chat.title = String(content).slice(0, 60);
     const history = chat.messages.slice(-12).map(({ role, content }) => ({ role, content }));
     const { text, engine } = await askHelper(chat.helperId, history);
@@ -181,7 +182,9 @@ export function createApp({ dataDir } = {}) {
   router.post('/api/powerups/:id/run', async (req, res, { id }) => {
     const pu = POWERUP_MAP[id];
     if (!pu) return notFound(res, 'unknown power-up');
-    const { inputs = {} } = await readBody(req);
+    const { inputs: rawInputs = {} } = await readBody(req);
+    const inputs = {};
+    for (const [k, v] of Object.entries(rawInputs)) inputs[k] = clean(v, 2000);
     for (const f of pu.fields) {
       if (f.required && !String(inputs[f.key] || '').trim()) return bad(res, `"${f.label}" is required`);
     }
@@ -520,8 +523,9 @@ export function createApp({ dataDir } = {}) {
     } catch (e) { sendJSON(res, 400, { error: e.message }); }
   });
   router.post('/api/agent/run', async (req, res) => {
-    const { goal } = await readBody(req);
-    if (!goal || !String(goal).trim()) return bad(res, 'goal is required');
+    const { goal: rawGoal } = await readBody(req);
+    if (!rawGoal || !String(rawGoal).trim()) return bad(res, 'goal is required');
+    const goal = clean(rawGoal, 2000);
     const ctx = agentCtx();
     const callModel = makeToolCaller({ settings: S().settings, system: AGENT_SYSTEM, tools: toolMeta() });
     try {

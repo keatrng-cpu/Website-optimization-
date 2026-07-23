@@ -4,6 +4,43 @@ import { offlineGenerate } from './offline.js';
 
 const TIMEOUT_MS = 60_000;
 
+// Model auto-discovery (forge-web-stack crown jewel): hardcoded model ids 404
+// silently when retired. Discover the newest matching model live and cache it;
+// an explicit settings.model always wins, a constant is the last resort.
+const _modelCache = new Map();
+const DEFAULT_MODEL = { anthropic: 'claude-sonnet-5', openai: 'gpt-4o-mini' };
+
+export async function pickModel(settings) {
+  if (settings.model) return settings.model; // user choice wins
+  const provider = settings.provider;
+  const key = `${provider}:${settings.baseUrl || ''}`;
+  if (_modelCache.has(key)) return _modelCache.get(key);
+  const fallback = DEFAULT_MODEL[provider];
+  try {
+    let url, headers, match;
+    if (provider === 'anthropic') {
+      url = (settings.baseUrl || 'https://api.anthropic.com') + '/v1/models';
+      headers = { 'x-api-key': settings.apiKey, 'anthropic-version': '2023-06-01' };
+      match = 'sonnet';
+    } else {
+      url = (settings.baseUrl || 'https://api.openai.com') + '/v1/models';
+      headers = { authorization: `Bearer ${settings.apiKey}` };
+      match = 'gpt-4';
+    }
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`models ${res.status}`);
+    const data = await res.json();
+    const list = (data.data || []).filter((m) => String(m.id).toLowerCase().includes(match));
+    // newest first: prefer created/created_at desc, else lexical desc
+    list.sort((a, b) => (b.created_at || b.created || 0) - (a.created_at || a.created || 0) || String(b.id).localeCompare(String(a.id)));
+    const chosen = list[0]?.id || fallback;
+    _modelCache.set(key, chosen);
+    return chosen;
+  } catch {
+    return fallback;
+  }
+}
+
 async function callAnthropic(settings, system, messages) {
   const res = await fetch((settings.baseUrl || 'https://api.anthropic.com') + '/v1/messages', {
     method: 'POST',
@@ -13,7 +50,7 @@ async function callAnthropic(settings, system, messages) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: settings.model || 'claude-sonnet-5',
+      model: await pickModel(settings),
       max_tokens: 2048,
       system,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -33,7 +70,7 @@ async function callOpenAI(settings, system, messages) {
       authorization: `Bearer ${settings.apiKey}`,
     },
     body: JSON.stringify({
-      model: settings.model || 'gpt-4o-mini',
+      model: await pickModel(settings),
       messages: [{ role: 'system', content: system }, ...messages],
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -82,7 +119,7 @@ export function makeToolCaller({ settings, system, tools }) {
       const res = await fetch((settings.baseUrl || 'https://api.anthropic.com') + '/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': settings.apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: settings.model || 'claude-sonnet-5', max_tokens: 2048, system, tools: anthTools, messages }),
+        body: JSON.stringify({ model: await pickModel(settings), max_tokens: 2048, system, tools: anthTools, messages }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) throw new Error(`anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -105,7 +142,7 @@ export function makeToolCaller({ settings, system, tools }) {
     const res = await fetch((settings.baseUrl || 'https://api.openai.com') + '/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${settings.apiKey}` },
-      body: JSON.stringify({ model: settings.model || 'gpt-4o-mini', messages, tools: oaTools }),
+      body: JSON.stringify({ model: await pickModel(settings), messages, tools: oaTools }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) throw new Error(`openai ${res.status}: ${(await res.text()).slice(0, 200)}`);

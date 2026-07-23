@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0c0a09">
+<title>Ellingson Estates · Portfolio</title>
+<style>
+  :root{--bg:#0c0a09;--panel:#17130f;--panel2:#120f0c;--line:#2c231b;--ink:#f6efe6;--muted:#b09a86;
+    --ember:#ff7a1a;--ember2:#ffab5e;--gold:#e8b64c;--green:#39d98a;--red:#ff6b5e;--blue:#5aa9ff;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:0 0 44px;line-height:1.45}
+  .wrap{max-width:720px;margin:0 auto;padding:0 14px}
+  header{position:sticky;top:0;z-index:20;background:linear-gradient(180deg,var(--bg) 72%,rgba(12,10,9,0));padding:16px 14px 12px}
+  header .max{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:10px}
+  h1{font-size:1.05rem;margin:0;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+  h1 b{color:var(--ember)}
+  .grow{flex:1}
+  button.ic{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;width:38px;height:38px;font-size:1.1rem;cursor:pointer;flex:none}
+  button.ic:active{transform:scale(.94)}
+  .sect>h2{font-size:.76rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:18px 0 9px;font-weight:800}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 15px;margin-bottom:11px}
+  .port{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
+  .stat .l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .stat .v{font-size:1.4rem;font-weight:800;margin-top:3px;line-height:1.05}
+  .stat .s{font-size:.74rem;color:var(--muted);margin-top:2px}
+  .bar{height:6px;background:#2c231b;border-radius:99px;margin-top:8px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--ember),var(--gold));border-radius:99px}
+  .mono{font-variant-numeric:tabular-nums}
+  .prop{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 15px;margin-bottom:11px}
+  .prop .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .prop .nm{font-weight:800;font-size:1.02rem}
+  .prop .ad{color:var(--muted);font-size:.83rem;margin-top:1px}
+  .badge{display:inline-block;font-size:.68rem;font-weight:800;padding:3px 8px;border-radius:7px;margin-left:6px;vertical-align:middle;white-space:nowrap}
+  .b-green{background:#0f2e20;color:var(--green)} .b-red{background:#33150f;color:var(--red)}
+  .b-amber{background:#332611;color:var(--gold)} .b-blue{background:#0e1f33;color:var(--blue)}
+  .b-ember{background:#331a08;color:var(--ember2)} .b-grey{background:#221c15;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:13px}
+  .m{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .m .l{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .m .v{font-size:1.02rem;font-weight:800;margin-top:2px}
+  .v.pos{color:var(--green)} .v.neg{color:var(--red)}
+  .refi{margin-top:12px;padding-top:11px;border-top:1px dashed var(--line);font-size:.86rem;color:var(--muted)}
+  .refi b{color:var(--ink)}
+  .add{display:block;text-align:center;background:linear-gradient(90deg,var(--ember),#ff9440);color:#1a0d02;font-weight:800;border-radius:12px;padding:13px;text-decoration:none;margin-top:6px}
+  .empty{color:var(--muted);font-size:.9rem;padding:8px 2px}
+  .alert{background:#33150f;border:1px solid #5a241c;color:#ffb9b0;border-radius:12px;padding:10px 13px;font-size:.86rem;margin-bottom:11px;display:none}
+  #lock{max-width:360px;margin:16vh auto 0;padding:0 20px;text-align:center}
+  #lock h1{font-size:1.5rem;letter-spacing:.06em}
+  #lock p{color:var(--muted);font-size:.9rem;margin-top:2px}
+  #lock input{width:100%;margin-top:16px;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:12px;padding:14px;font-size:1.05rem;text-align:center;letter-spacing:.05em}
+  #lock button{width:100%;margin-top:12px;background:var(--ember);color:#1a0d02;border:none;border-radius:12px;padding:14px;font-size:1rem;font-weight:800;cursor:pointer}
+  #lock .err{color:var(--red);font-size:.85rem;margin-top:12px;min-height:1.1em}
+  .foot{color:var(--muted);font-size:.72rem;text-align:center;margin-top:24px;line-height:1.7}
+  a{color:var(--ember2)}
+</style>
+</head>
+<body>
+
+<div id="lock">
+  <h1>ELLINGSON <b style="color:var(--ember)">ESTATES</b></h1>
+  <p>Portfolio — enter passcode</p>
+  <input id="key" type="password" inputmode="text" autocomplete="off" placeholder="passcode" enterkeyhint="go">
+  <button onclick="unlock()">Unlock</button>
+  <div class="err" id="lockErr"></div>
+</div>
+
+<div id="appShell" style="display:none">
+  <header><div class="max">
+    <h1>ELLINGSON <b>ESTATES</b></h1>
+    <span class="grow"></span>
+    <button class="ic" onclick="refresh()" aria-label="Refresh" id="refBtn">⟳</button>
+    <button class="ic" onclick="lockNow()" aria-label="Lock">⏻</button>
+  </div></header>
+  <div class="wrap">
+    <div class="alert" id="lateAlert"></div>
+
+    <div class="sect"><h2>Portfolio · road to 5 doors</h2>
+      <div class="card"><div class="port" id="portGrid"></div></div>
+    </div>
+
+    <div class="sect"><h2>Properties &amp; deals</h2>
+      <div id="propWrap"><div class="empty">Loading…</div></div>
+      <a class="add" href="https://airtable.com/appYOURBASEID000/tblYOURTABLE0000" target="_blank" rel="noopener">+ Add a property / deal in Airtable</a>
+    </div>
+
+    <div class="foot">
+      Every number computed from your inputs — cash flow, cap rate, CoC, DSCR, LTV, BRRRR refi.
+      Not investment advice. DSCR floor 1.25 · reserve floor $30K untouchable.<br>
+      <span id="stamp"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+var KEY_STORE='pantheon_desk_key';
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function money(v){var nn=parseFloat(v);if(!isFinite(nn))return '—';return (nn<0?'-$':'$')+Math.abs(Math.round(nn)).toLocaleString('en-US');}
+function pct(v){var nn=parseFloat(v);if(!isFinite(nn)||v==null)return '—';return (Math.round(nn*100)/100)+'%';}
+function statusBadge(s){
+  var m={'Rented':'b-green','Refi':'b-blue','Rehab':'b-amber','Under Contract':'b-ember','Prospect':'b-grey','Sold':'b-grey'};
+  return s?'<span class="badge '+(m[s]||'b-grey')+'">'+esc(s)+'</span>':'';
+}
+function unlock(){var k=($('key').value||'').trim();if(!k)return;localStorage.setItem(KEY_STORE,k);$('lockErr').textContent='';load(true);}
+function lockNow(){localStorage.removeItem(KEY_STORE);location.reload();}
+function showLock(msg){$('appShell').style.display='none';$('lock').style.display='block';$('lockErr').textContent=msg||'';$('key').value='';}
+
+var timer=null;
+function refresh(){load(false);}
+function load(fromUnlock){
+  var key=localStorage.getItem(KEY_STORE);
+  if(!key){showLock('');return;}
+  $('refBtn').textContent='…';
+  fetch('/.netlify/functions/estates-data',{headers:{'x-desk-key':key}})
+    .then(function(r){if(r.status===401)throw{code:401};return r.json();})
+    .then(function(d){
+      if(!d||!d.ok)throw{code:0};
+      $('lock').style.display='none';$('appShell').style.display='block';
+      render(d);
+      if(!timer)timer=setInterval(function(){load(false);},120000);
+    })
+    .catch(function(e){
+      if(e&&e.code===401)showLock('Wrong passcode — try again.');
+      else if(fromUnlock)showLock('Could not connect — try again.');
+    })
+    .finally(function(){$('refBtn').textContent='⟳';});
+}
+
+function barPct(a,b){var p=b>0?Math.max(0,Math.min(100,(a/b)*100)):0;return p.toFixed(0);}
+
+function render(d){
+  var P=d.portfolio||{};
+  // late alert
+  var la=$('lateAlert');
+  if(P.rentLateCount>0){la.style.display='block';la.textContent='⚠ '+P.rentLateCount+' unit(s) past rent-due +3 days — chase now (your day-3 flag rule).';}
+  else la.style.display='none';
+
+  // portfolio grid
+  var cf=P.cashFlowMo||0, cfGoal=P.goalCashFlowMo||4500;
+  var doors=P.doors||0, dGoal=P.goalDoors||5;
+  var dscrOk = P.avgDscr!=null && P.avgDscr>=(P.dscrMin||1.25);
+  $('portGrid').innerHTML=
+    stat('Doors', doors+' / '+dGoal, 'income-producing', barPct(doors,dGoal))+
+    stat('Cash flow / mo', money(cf), 'goal '+money(cfGoal), barPct(cf,cfGoal), cf>=0?'':'neg')+
+    stat('Total equity', money(P.equity), 'across portfolio')+
+    stat('Avg DSCR', (P.avgDscr!=null?P.avgDscr.toFixed(2):'—'), 'floor '+(P.dscrMin||1.25).toFixed(2)+(P.avgDscr!=null?(dscrOk?' ✓':' ✗'):''), null, (P.avgDscr==null?'':(dscrOk?'pos':'neg')))+
+    stat('Portfolio CoC', pct(P.portfolioCoc), 'cash-on-cash')+
+    stat('QBI hours', (P.hoursYTD||0)+' / '+(P.qbiHours||250), 'safe-harbor log', barPct(P.hoursYTD||0,P.qbiHours||250));
+
+  // properties
+  var props=d.properties||[];
+  if(!props.length){
+    $('propWrap').innerHTML='<div class="empty">No properties yet. Add your first deal below — even a prospect, to run the numbers before you offer.</div>';
+    $('stamp').textContent='Updated '+new Date().toLocaleTimeString('en-US');
+    return;
+  }
+  $('propWrap').innerHTML=props.map(function(p){
+    var cfCls=p.cashFlowMonthly>=0?'pos':'neg';
+    var dscrBadge = p.dscr==null?'':'<span class="badge '+(p.dscrPass?'b-green':'b-red')+'">DSCR '+p.dscr.toFixed(2)+(p.dscrPass?' ✓':' ✗')+'</span>';
+    var refiReady = p.refi && p.refi.recoversAll && p.refi.seasoned;
+    var refiBadge = (p.strategy==='BRRRR'||p.status==='Rehab'||p.status==='Rented')
+      ? (refiReady?'<span class="badge b-green">BRRRR ready</span>':(p.refi&&p.refi.seasoned===false?'<span class="badge b-amber">seasoning</span>':'')) : '';
+    var lateBadge = p.rentLate?'<span class="badge b-red">rent late</span>':'';
+    var refiLine='';
+    if(p.strategy==='BRRRR'||p.status==='Rehab'||p.status==='Under Contract'||p.status==='Prospect'){
+      var so=p.refi?p.refi.cashOut:0;
+      refiLine='<div class="refi">BRRRR refi @ 75% ARV: max loan <b>'+money(p.refi.maxLoan)+'</b> · '+
+        (so>=0?'cash-out <b>'+money(so)+'</b>':'<b class="neg">short '+money(-so)+'</b>')+
+        (p.refi.recoversAll?' · <b style="color:var(--green)">recovers all cash</b>':'')+
+        (p.refi.seasonedMonths!=null?' · seasoned '+p.refi.seasonedMonths.toFixed(1)+'mo':'')+'</div>';
+    }
+    return '<div class="prop">'+
+      '<div class="top"><div><div class="nm">'+esc(p.name)+statusBadge(p.status)+(p.strategy?'<span class="badge b-grey">'+esc(p.strategy)+'</span>':'')+'</div>'+
+        (p.address?'<div class="ad">'+esc(p.address)+'</div>':'')+'</div></div>'+
+      '<div style="margin-top:9px">'+dscrBadge+lateBadge+refiBadge+'</div>'+
+      '<div class="grid">'+
+        met('Cash flow/mo', money(p.cashFlowMonthly), cfCls)+
+        met('Cap rate', pct(p.capRate))+
+        met('Cash-on-cash', pct(p.coc))+
+        met('LTV', pct(p.ltv))+
+        met('Equity', money(p.equity))+
+        met('1% rule', pct(p.onePct))+
+        met('Rent/mo', money(p.rent))+
+        met('Mortgage P&I', money(p.piMonthly))+
+        met('Cash in', money(p.cashInvested))+
+      '</div>'+refiLine+'</div>';
+  }).join('');
+  $('stamp').textContent='Updated '+new Date().toLocaleTimeString('en-US');
+}
+function stat(l,v,s,barp,vcls){
+  return '<div class="stat"><div class="l">'+esc(l)+'</div><div class="v mono '+(vcls||'')+'">'+esc(v)+'</div>'+
+    (s?'<div class="s">'+esc(s)+'</div>':'')+
+    (barp!=null?'<div class="bar"><i style="width:'+barp+'%"></i></div>':'')+'</div>';
+}
+function met(l,v,cls){return '<div class="m"><div class="l">'+esc(l)+'</div><div class="v mono '+(cls||'')+'">'+esc(v)+'</div></div>';}
+
+(function(){
+  var k=$('key');
+  if(k)k.addEventListener('keydown',function(e){if(e.key==='Enter')unlock();});
+  if(localStorage.getItem(KEY_STORE)){$('lock').style.display='none';load(true);}
+})();
+</script>
+</body>
+</html>

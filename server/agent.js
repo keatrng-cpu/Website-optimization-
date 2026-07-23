@@ -8,6 +8,7 @@ import { POWERUP_MAP } from './powerups.js';
 import { PALETTES, slugify, defaultSections, renderSite } from './sites.js';
 import { auditHTML } from './seo.js';
 import { callIntegration } from './integrations.js';
+import { GUARDRAILS } from './helpers.js';
 
 // Each tool: name, description, JSON-schema input, and an async run(ctx, args).
 // ctx = { store, ask } where ask(helperId, message) -> { text, engine }.
@@ -137,7 +138,7 @@ export async function executeTool(ctx, name, args = {}) {
   return tool.run(ctx, args || {});
 }
 
-export const AGENT_SYSTEM = 'You are HELIX Autopilot, an autonomous operator for this business. Break the user\'s goal into steps and use the available tools to actually do the work. Prefer real actions (create tasks, build sites, run audits, generate content, call integrations) over describing them. When finished, stop calling tools and give a short summary of what you accomplished.';
+export const AGENT_SYSTEM = 'You are HELIX Autopilot, an autonomous operator for this business. Break the user\'s goal into steps and use the available tools to actually do the work. Prefer real actions (create tasks, build sites, run audits, generate content, call integrations) over describing them. When finished, stop calling tools and give a short summary of what you accomplished.\n\n' + GUARDRAILS;
 
 // Provider-driven loop. `callModel` is a stateful closure that owns the native
 // provider conversation and is called as:

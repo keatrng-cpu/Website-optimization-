@@ -173,9 +173,10 @@ async function handle(method, pathname, query, body) {
       if (!chat) return notFound();
       if (p[2] === 'messages' && method === 'POST') {
         if (!body.content || !String(body.content).trim()) return bad('content is required');
-        chat.messages.push({ role: 'user', content: String(body.content), at: Date.now() });
-        if (chat.messages.length === 1) chat.title = String(body.content).slice(0, 60);
-        const { text, engine } = ask(chat.helperId, String(body.content));
+        const _c = clean(String(body.content));
+        chat.messages.push({ role: 'user', content: _c, at: Date.now() });
+        if (chat.messages.length === 1) chat.title = _c.slice(0, 60);
+        const { text, engine } = ask(chat.helperId, _c);
         const reply = { role: 'assistant', content: text, at: Date.now(), engine };
         chat.messages.push(reply); save();
         return ok({ reply, chat: { id: chat.id, title: chat.title } });
@@ -235,7 +236,7 @@ async function handle(method, pathname, query, body) {
       const pu = POWERUP_MAP[id];
       if (!pu) return notFound('unknown power-up');
       if (p[2] === 'run' && method === 'POST') {
-        const inputs = body.inputs || {};
+        const inputs = {}; for (const [k, v] of Object.entries(body.inputs || {})) inputs[k] = clean(v, 2000);
         for (const f of pu.fields) {
           if (f.required && !String(inputs[f.key] || '').trim()) return bad(`"${f.label}" is required`);
         }
@@ -524,7 +525,7 @@ async function handle(method, pathname, query, body) {
       }
       if (p[1] === 'run' && method === 'POST') {
         if (!body.goal || !String(body.goal).trim()) return bad('goal is required');
-        const out = await runPlanner(ctx, { goal: String(body.goal) });
+        const out = await runPlanner(ctx, { goal: clean(String(body.goal), 2000) });
         db.inbox.unshift({ id: uid(), title: `Autopilot ran: “${String(body.goal).slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, createdAt: Date.now() });
         save();
         return ok(out);

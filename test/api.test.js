@@ -484,6 +484,55 @@ test('agent: provider loop orchestrates tool calls (stub model)', async () => {
   fsm.rmSync(dir, { recursive: true, force: true });
 });
 
+test('forge hardening: input hygiene strips control chars and caps length', async () => {
+  const { clean } = await import('../server/helpers.js');
+  assert.equal(clean('a bc'), 'abc', 'control chars removed');
+  assert.equal(clean('line1\nline2\ttab'), 'line1\nline2\ttab', 'newline and tab preserved');
+  assert.equal(clean('x'.repeat(50), 10).length, 10, 'length capped');
+  assert.equal(clean(null), '');
+
+  // applied end-to-end: a chat message with a null byte is stored clean
+  const chat = await api('POST', '/api/chats', { helperId: 'penn' });
+  await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'hello  world' });
+  const full = await api('GET', `/api/chats/${chat.data.id}`);
+  assert.ok(!full.data.messages[0].content.includes(' '), 'stored message is sanitized');
+  await api('DELETE', `/api/chats/${chat.data.id}`);
+});
+
+test('forge hardening: guardrails are baked into system prompts', async () => {
+  const { systemPrompt, GUARDRAILS } = await import('../server/helpers.js');
+  const { AGENT_SYSTEM } = await import('../server/agent.js');
+  for (const phrase of ['untrusted data', 'Do NOT state any number', 'no tax, legal, financial, or medical advice'.toLowerCase()]) {
+    assert.ok(GUARDRAILS.toLowerCase().includes(phrase.toLowerCase()), `guardrails mention: ${phrase}`);
+  }
+  const sp = systemPrompt(HELPER_MAP_probe(), { businessName: 'X' }, [], null);
+  assert.ok(sp.includes('Do NOT state any number'), 'helper system prompt carries the accuracy mandate');
+  assert.ok(AGENT_SYSTEM.includes('untrusted data'), 'agent system prompt carries the guardrails');
+  function HELPER_MAP_probe() { return { prompt: 'You are a tester.', id: 'x', name: 'X' }; }
+});
+
+test('forge hardening: model auto-discovery picks newest, respects user choice, falls back', async () => {
+  const { pickModel } = await import('../server/ai.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ data: [
+    { id: 'claude-sonnet-4', created_at: 100 },
+    { id: 'claude-sonnet-5', created_at: 200 },
+    { id: 'claude-opus-4', created_at: 300 },
+  ] }), { status: 200 });
+  try {
+    // discovers the newest *sonnet* (not opus), ignoring created order for the filter
+    const m = await pickModel({ provider: 'anthropic', apiKey: 'k', baseUrl: 'https://x.example' });
+    assert.equal(m, 'claude-sonnet-5');
+    // explicit user model always wins, no network needed
+    const forced = await pickModel({ provider: 'anthropic', apiKey: 'k', model: 'claude-custom', baseUrl: 'https://y.example' });
+    assert.equal(forced, 'claude-custom');
+    // discovery failure falls back to a constant
+    globalThis.fetch = async () => new Response('nope', { status: 500 });
+    const fb = await pickModel({ provider: 'openai', apiKey: 'k', baseUrl: 'https://z.example' });
+    assert.equal(fb, 'gpt-4o-mini');
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);
