@@ -208,6 +208,59 @@ test('seo: audit a studio site and store the report', async () => {
   assert.equal(bad.status, 400);
 });
 
+test('site chat: live widget endpoint returns a reply (by id and slug)', async () => {
+  const sites = await api('GET', '/api/sites');
+  const site = sites.data[0];
+  const byId = await api('POST', `/api/sites/${site.id}/chat`, { messages: [{ role: 'user', content: 'What do you sell?' }] });
+  assert.equal(byId.status, 200);
+  assert.equal(byId.data.ok, true);
+  assert.ok(byId.data.reply.length > 5, 'a reply is produced');
+
+  const bySlug = await api('POST', `/api/sites/${site.slug}/chat`, { messages: [{ role: 'user', content: 'hi' }] });
+  assert.equal(bySlug.status, 200);
+  assert.ok(bySlug.data.reply);
+
+  // empty / non-user history is rejected cleanly
+  const bad = await api('POST', `/api/sites/${site.id}/chat`, { messages: [] });
+  assert.equal(bad.status, 400);
+
+  // the published page embeds the chat widget wired to its slug endpoint
+  const page = await (await fetch(`${base}/sites/${site.slug}`)).text();
+  assert.ok(page.includes('hx-chat'), 'page carries the chat widget');
+  assert.ok(page.includes(`/api/sites/${site.slug}/chat`), 'widget points at the live endpoint');
+});
+
+test('netlify export: bundle is a valid zip with a working serverless chat fn', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const sites = await api('GET', '/api/sites');
+  const res = await fetch(`${base}/api/sites/${sites.data[0].id}/export`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'application/zip');
+  const buf = Buffer.from(await res.arrayBuffer());
+  assert.ok(buf.length > 500);
+  // ZIP local-file-header magic
+  assert.equal(buf.readUInt32LE(0), 0x04034b50, 'starts with a PK local header');
+
+  // write, unzip, and node --check the generated function (the skill's mandate)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'helix-zip-'));
+  const zipPath = path.join(dir, 'b.zip');
+  fs.writeFileSync(zipPath, buf);
+  execFileSync('unzip', ['-o', zipPath, '-d', dir]);
+  for (const f of ['index.html', 'netlify/functions/chat.js', 'netlify.toml', 'README.md']) {
+    assert.ok(fs.existsSync(path.join(dir, f)), `bundle contains ${f}`);
+  }
+  const fn = path.join(dir, 'netlify/functions/chat.js');
+  execFileSync('node', ['--check', fn]); // throws if the generated function is invalid JS
+  const fnSrc = fs.readFileSync(fn, 'utf8');
+  assert.ok(fnSrc.includes('pickModel') && fnSrc.includes('sonnet'), 'chat fn does model auto-discovery');
+  assert.ok(fnSrc.includes('ANTHROPIC_API_KEY') && fnSrc.includes('process.env'), 'key comes from env, not the client');
+  assert.ok(!/sk-ant-[A-Za-z0-9]/.test(fnSrc), 'no real key baked in');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('marketing: calendar generate + emails generate', async () => {
   const week = await api('POST', '/api/calendar/generate', { platforms: ['LinkedIn', 'Instagram'] });
   assert.equal(week.status, 200);

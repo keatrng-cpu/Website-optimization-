@@ -14,6 +14,7 @@ import { recordView, summarize } from './analytics.js';
 import { PRESETS, PRESET_MAP, redactIntegration, testIntegration } from './integrations.js';
 import { generate, makeToolCaller } from './ai.js';
 import { toolMeta, buildTools, runAgent, runPlanner, AGENT_SYSTEM } from './agent.js';
+import { buildExport } from './export-site.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -296,6 +297,7 @@ export function createApp({ dataDir } = {}) {
     if (b.name !== undefined) site.name = String(b.name);
     if (b.palette !== undefined && PALETTES[b.palette]) site.palette = b.palette;
     if (b.published !== undefined) site.published = !!b.published;
+    if (b.chatEnabled !== undefined) site.chatEnabled = !!b.chatEnabled;
     if (Array.isArray(b.sections)) site.sections = b.sections;
     site.updatedAt = Date.now();
     store.save();
@@ -329,6 +331,42 @@ export function createApp({ dataDir } = {}) {
     const html = renderSite(site, S().brain);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(html);
+  });
+  // Live chat backing the on-site widget (works on any HELIX-served site).
+  // :id may be a site id or slug. Uses the connected provider (Sonnet via
+  // pickModel) or the offline engine — always returns a reply, never a 500.
+  router.post('/api/sites/:id/chat', async (req, res, { id }) => {
+    const site = S().sites.find((s) => s.id === id || s.slug === id);
+    if (!site) return notFound(res);
+    const body = await readBody(req);
+    const history = Array.isArray(body.messages) ? body.messages : [];
+    const msgs = history.slice(-10)
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && m.content)
+      .map((m) => ({ role: m.role, content: clean(m.content, 2000) }));
+    if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return bad(res, 'send a user message');
+    const helper = {
+      id: 'site', name: `${S().brain.businessName || site.name} assistant`,
+      prompt: `You are the friendly website assistant for ${S().brain.businessName || site.name}. Answer visitor questions in 2-4 warm, helpful sentences and invite them to get in touch. If you lack a specific fact or price, invite them to contact the business rather than inventing it.`,
+    };
+    const system = systemPrompt(helper, S().brain, S().knowledge, null);
+    try {
+      const { text } = await generate({ settings: S().settings, helper, brain: S().brain, system, messages: msgs });
+      sendJSON(res, 200, { ok: true, reply: (text || '').slice(0, 2000) || "Thanks! Please use the contact section and we'll follow up." });
+    } catch {
+      sendJSON(res, 200, { ok: true, reply: "Thanks for reaching out! Please use the contact section and we'll follow up shortly.", degraded: true });
+    }
+  });
+  // Netlify export: a deployable zip (static site + serverless Sonnet chat).
+  router.get('/api/sites/:id/export', (req, res, { id }) => {
+    const site = S().sites.find((s) => s.id === id);
+    if (!site) return notFound(res);
+    const { zip } = buildExport(site, S().brain);
+    res.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${site.slug}-netlify.zip"`,
+      'Content-Length': zip.length,
+    });
+    res.end(Buffer.from(zip));
   });
 
   // ---------- marketing: calendar + emails ----------

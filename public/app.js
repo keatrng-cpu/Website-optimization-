@@ -736,7 +736,9 @@ async function siteEditor(main, siteId) {
       <div class="row">
         <select id="palette" style="width:auto">${state.boot.palettes.map((p) => `<option ${p === site.palette ? 'selected' : ''}>${p}</option>`).join('')}</select>
         <button class="btn ghost" id="regen">🪄 Regenerate copy</button>
+        <button class="btn ghost" id="chatToggle">${site.chatEnabled === false ? '💬 Enable chat' : '💬 Chat: on'}</button>
         <button class="btn ghost" id="toggle">${site.published ? '⏸ Unpublish' : '▶ Publish'}</button>
+        <a class="btn ghost" id="exportBtn" href="/api/sites/${site.id}/export" download>⬇ Export for Netlify</a>
         <a class="btn" href="/sites/${site.slug}" target="_blank">↗ View live</a>
       </div>
     </div>
@@ -769,6 +771,8 @@ async function siteEditor(main, siteId) {
   const refresh = () => { frame.src = `/api/sites/${site.id}/preview?t=${Date.now()}`; };
   $('#palette', main).onchange = async (e) => { await api('PATCH', `/api/sites/${siteId}`, { palette: e.target.value }); refresh(); };
   $('#toggle', main).onclick = async () => { await api('PATCH', `/api/sites/${siteId}`, { published: !site.published }); navigate(); };
+  $('#chatToggle', main).onclick = async () => { await api('PATCH', `/api/sites/${siteId}`, { chatEnabled: site.chatEnabled === false }); navigate(); };
+  $('#exportBtn', main).onclick = () => toast('Building your Netlify bundle — check your downloads 📦');
   $('#regen', main).onclick = async (e) => {
     e.target.disabled = true; e.target.textContent = '⏳ Writing…';
     await api('POST', `/api/sites/${siteId}/generate`); navigate();

@@ -84,12 +84,65 @@ const RENDERERS = {
   </section>`,
 };
 
-export function renderSite(site, brain) {
+// A floating Claude-powered chat widget. `endpoint` is where it POSTs
+// {messages:[{role,content}]} and expects {reply}. Palette-matched, and it
+// degrades to a friendly message if the endpoint is unreachable.
+export function chatWidget(name, endpoint) {
+  const greeting = `Hi! I'm the assistant for ${name}. Ask me anything.`;
+  return `
+<div id="hx-chat">
+  <button id="hx-chat-btn" aria-label="Open chat">💬</button>
+  <div id="hx-chat-panel" hidden>
+    <div id="hx-chat-head"><span>${esc(name)}</span><button id="hx-chat-close" aria-label="Close">✕</button></div>
+    <div id="hx-chat-msgs"></div>
+    <form id="hx-chat-form"><input id="hx-chat-in" placeholder="Type a message…" autocomplete="off"><button type="submit">Send</button></form>
+  </div>
+</div>
+<style>
+  #hx-chat{position:fixed;right:20px;bottom:20px;z-index:9999;font-family:system-ui,sans-serif}
+  #hx-chat-btn{width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;font-size:24px;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 8px 24px rgba(0,0,0,.3)}
+  #hx-chat-panel{position:absolute;right:0;bottom:70px;width:min(360px,86vw);height:min(480px,70vh);background:var(--surface);border:1px solid rgba(255,255,255,.12);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.4)}
+  #hx-chat-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:600}
+  #hx-chat-head button{background:none;border:none;color:#fff;font-size:16px;cursor:pointer}
+  #hx-chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .hx-m{max-width:82%;padding:9px 12px;border-radius:12px;font-size:14px;line-height:1.45}
+  .hx-m.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px}
+  .hx-m.bot{align-self:flex-start;background:rgba(255,255,255,.08);color:var(--text);border-bottom-left-radius:3px}
+  #hx-chat-form{display:flex;gap:8px;padding:12px;border-top:1px solid rgba(255,255,255,.1)}
+  #hx-chat-in{flex:1;padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:var(--bg);color:var(--text);font:inherit}
+  #hx-chat-form button{padding:9px 14px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+</style>
+<script>
+(function(){
+  var ENDPOINT=${JSON.stringify(endpoint)};
+  var msgs=[{role:'assistant',content:${JSON.stringify(greeting)}}];
+  var panel=document.getElementById('hx-chat-panel'),box=document.getElementById('hx-chat-msgs');
+  var btn=document.getElementById('hx-chat-btn'),form=document.getElementById('hx-chat-form'),input=document.getElementById('hx-chat-in');
+  function render(){box.innerHTML=msgs.map(function(m){return '<div class="hx-m '+(m.role==='user'?'user':'bot')+'">'+m.content.replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})+'</div>';}).join('');box.scrollTop=box.scrollHeight;}
+  function toggle(open){panel.hidden=!open;if(open){render();input.focus();}}
+  btn.onclick=function(){toggle(panel.hidden);};
+  document.getElementById('hx-chat-close').onclick=function(){toggle(false);};
+  form.onsubmit=function(e){
+    e.preventDefault();var t=input.value.trim();if(!t)return;input.value='';
+    msgs.push({role:'user',content:t});msgs.push({role:'assistant',content:'…'});render();
+    var send=msgs.filter(function(m){return m.content!=='…';});
+    fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({messages:send})})
+      .then(function(r){return r.json();})
+      .then(function(d){msgs.pop();msgs.push({role:'assistant',content:(d&&d.reply)||"Thanks! Please use the contact section and we'll follow up."});render();})
+      .catch(function(){msgs.pop();msgs.push({role:'assistant',content:"I'm having trouble connecting — please use the contact section and we'll follow up."});render();});
+  };
+})();
+<\/script>`;
+}
+
+export function renderSite(site, brain, opts = {}) {
   const p = PALETTES[site.palette] || PALETTES.midnight;
   const name = brain.businessName || site.name;
   const title = `${site.name}${brain.tagline ? ' — ' + brain.tagline : ''}`.slice(0, 60);
   const desc = (brain.description || `${name}: ${brain.tagline || 'quality you can trust.'}`).slice(0, 158);
   const body = (site.sections || []).map((s) => (RENDERERS[s.type] || (() => ''))(s)).join('\n');
+  const chatOn = opts.chat !== false && site.chatEnabled !== false;
+  const widget = chatOn ? chatWidget(name, opts.chatEndpoint || `/api/sites/${site.slug}/chat`) : '';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -132,6 +185,7 @@ export function renderSite(site, brain) {
 ${body}
 </main>
 <footer>© ${new Date().getFullYear()} ${esc(name)} · Built with HELIX</footer>
+${widget}
 </body>
 </html>`;
 }

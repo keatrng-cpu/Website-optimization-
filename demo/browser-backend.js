@@ -332,6 +332,20 @@ async function handle(method, pathname, query, body) {
         db.sites.unshift(site); save();
         return ok(site, 201);
       }
+      // chat + export accept id OR slug
+      const siteAny = db.sites.find((s) => s.id === id || s.slug === id);
+      if (p[2] === 'chat' && method === 'POST') {
+        if (!siteAny) return notFound();
+        const history = Array.isArray(body.messages) ? body.messages : [];
+        const last = history.filter((m) => m && m.role === 'user' && m.content).slice(-1)[0];
+        if (!last) return bad('send a user message');
+        const { text } = ask('vizzy', clean(String(last.content), 2000));
+        return ok({ ok: true, reply: (text || '').slice(0, 2000) });
+      }
+      if (p[2] === 'export' && method === 'GET') {
+        if (!siteAny) return notFound();
+        return ok({ ok: true, note: 'Use the export button (client-side zip).' });
+      }
       const site = db.sites.find((s) => s.id === id);
       if (!site) return notFound();
       if (p[2] === 'generate' && method === 'POST') {
@@ -347,6 +361,7 @@ async function handle(method, pathname, query, body) {
         if (body.name !== undefined) site.name = String(body.name);
         if (body.palette !== undefined && PALETTES[body.palette]) site.palette = body.palette;
         if (body.published !== undefined) site.published = !!body.published;
+        if (body.chatEnabled !== undefined) site.chatEnabled = !!body.chatEnabled;
         if (Array.isArray(body.sections)) site.sections = body.sections;
         site.updatedAt = Date.now();
         save();
@@ -576,4 +591,11 @@ async function handle(method, pathname, query, body) {
   return notFound(`no route: ${method} ${pathname}`);
 }
 
-return { handle, previewHTML, recordView, exportJSON: () => JSON.stringify(db, null, 2) };
+function exportZip(idOrSlug) {
+  const site = db.sites.find((s) => s.id === idOrSlug || s.slug === idOrSlug);
+  if (!site) return null;
+  const { zip } = buildExport(site, db.brain);
+  return { zip, filename: `${site.slug}-netlify.zip` };
+}
+
+return { handle, previewHTML, recordView, exportZip, exportJSON: () => JSON.stringify(db, null, 2) };

@@ -81,16 +81,22 @@ document.addEventListener('click', (e) => {
     openSiteOverlay(href.split('/')[2]);
   } else if (href === '/api/export') {
     e.preventDefault();
-    const url = URL.createObjectURL(new Blob([HX.exportJSON()], { type: 'application/json' }));
-    const tmp = document.createElement('a');
-    tmp.href = url;
-    tmp.download = 'helix-export.json';
-    document.body.appendChild(tmp);
-    tmp.click();
-    tmp.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    downloadBlob(new Blob([HX.exportJSON()], { type: 'application/json' }), 'helix-export.json');
+  } else if (href.startsWith('/api/sites/') && href.endsWith('/export')) {
+    e.preventDefault();
+    const id = href.split('/')[3];
+    const out = HX.exportZip(id);
+    if (out) downloadBlob(new Blob([out.zip], { type: 'application/zip' }), out.filename);
   }
 }, true);
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const tmp = document.createElement('a');
+  tmp.href = url; tmp.download = filename;
+  document.body.appendChild(tmp); tmp.click(); tmp.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
 `;
 
 const js = [
@@ -102,6 +108,8 @@ const js = [
   port('server/seo.js'),
   port('server/integrations.js'),
   port('server/agent.js'),
+  port('server/zip.js'),
+  port('server/export-site.js'),
   read('demo/browser-backend.js'),
   '})();',
   glue,

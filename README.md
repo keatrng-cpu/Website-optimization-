@@ -93,7 +93,11 @@ websites, and campaigns all use it.
   results land in your Inbox and Documents.
 - **🌐 Website Studio** — generates a full, responsive, SEO-ready website from
   your Brain in seconds; edit every section with a live preview; published
-  instantly at `http://localhost:4310/sites/<slug>`.
+  instantly at `http://localhost:4310/sites/<slug>`. Every site ships with a
+  **Claude (Sonnet) chat widget** (live on HELIX, or on your own key once
+  deployed), and **⬇ Export for Netlify** produces a drag-and-drop zip — static
+  site + a serverless chat function built on the forge-web-stack pattern
+  (model auto-discovery, hard time budget, input hygiene, graceful fallback).
 - **📣 Marketing hub** — social content calendar (auto-generate a week of
   platform-native posts) and email campaign drafting.
 - **🔍 SEO** — real on-page audits (title, meta, headings, alt text, word
