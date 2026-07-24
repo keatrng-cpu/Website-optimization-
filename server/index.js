@@ -20,6 +20,7 @@ import { learnFromMessage, recordFeedback, aiLearn, MEMORY_PROPOSAL_SYSTEM } fro
 import { aiPropose } from './ai.js';
 import { buildTickerStats, parseLabelLines, TICKER_SUGGEST_SYSTEM } from './stats.js';
 import { recordAction, telemetrySummary } from './telemetry.js';
+import { ensureWorkspaces, listWorkspaces, createWorkspace, switchWorkspace, renameWorkspace, deleteWorkspace, planFor } from './workspaces.js';
 
 // Founder identities. Owner mode only ever exposes THIS device's own data —
 // per-device isolation is the security model, there is no cross-user access.
@@ -40,6 +41,7 @@ export function createApp({ dataDir } = {}) {
   const store = createStore(dataDir || path.join(__dirname, '..', 'data'));
   const router = createRouter();
   const S = () => store.state;
+  ensureWorkspaces(store.state, uid);
 
   const notFound = (res, msg = 'not found') => sendJSON(res, 404, { error: msg });
   const bad = (res, msg) => sendJSON(res, 400, { error: msg });
@@ -70,6 +72,7 @@ export function createApp({ dataDir } = {}) {
         integrations: s.integrations.filter((i) => i.enabled).length,
       },
       account: { name: s.account?.name || '', role: s.account?.role || 'member' },
+      workspaces: { list: listWorkspaces(s), limit: planFor(s.account).limit === Infinity ? null : planFor(s.account).limit, tier: planFor(s.account).tier },
     });
   });
 
@@ -725,6 +728,34 @@ export function createApp({ dataDir } = {}) {
     sendJSON(res, 200, a);
   });
 
+  // ---------- workspaces: multiple businesses per device ----------
+  const wsError = (res, e) => sendJSON(res, e.statusCode || 400, { error: e.message });
+  router.get('/api/workspaces', (req, res) => {
+    const plan = planFor(S().account);
+    sendJSON(res, 200, { list: listWorkspaces(S()), plan: { tier: plan.tier, limit: plan.limit === Infinity ? null : plan.limit } });
+  });
+  router.post('/api/workspaces', async (req, res) => {
+    const b = await readBody(req);
+    try {
+      const ws = createWorkspace(S(), uid, clean(String(b.name || ''), 60));
+      store.save();
+      sendJSON(res, 200, { id: ws.id, name: ws.name });
+    } catch (e) { wsError(res, e); }
+  });
+  router.post('/api/workspaces/:id/activate', (req, res, params) => {
+    try { switchWorkspace(S(), params.id); store.save(); sendJSON(res, 200, { ok: true, active: params.id }); }
+    catch (e) { wsError(res, e); }
+  });
+  router.patch('/api/workspaces/:id', async (req, res, params) => {
+    const b = await readBody(req);
+    try { const ws = renameWorkspace(S(), params.id, clean(String(b.name || ''), 60)); store.save(); sendJSON(res, 200, { id: ws.id, name: ws.name }); }
+    catch (e) { wsError(res, e); }
+  });
+  router.delete('/api/workspaces/:id', (req, res, params) => {
+    try { deleteWorkspace(S(), params.id); store.save(); sendJSON(res, 200, { ok: true }); }
+    catch (e) { wsError(res, e); }
+  });
+
   // Owner-only: the founder Command Center. Server-enforced, and by
   // architecture it can only ever report THIS device's own workspace.
   router.get('/api/owner/stats', (req, res) => {
@@ -768,6 +799,7 @@ export function createApp({ dataDir } = {}) {
       return bad(res, 'not a valid HELIX export');
     }
     store.replace(body);
+    ensureWorkspaces(S(), uid); // older backups predate multi-business
     // stale nextRun timestamps from a backup would fire every automation at once
     for (const a of S().automations) {
       if (a && a.schedule) a.nextRun = computeNextRun(a.schedule);

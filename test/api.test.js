@@ -1015,6 +1015,47 @@ test('owner: founder key prefix also unlocks; role is derived, not client-set', 
   assert.equal((await api('GET', '/api/account')).data.role, 'member', 'role recomputed when key changes');
 });
 
+test('workspaces: plan limits and full data isolation between businesses', async () => {
+  // free plan: 1 business, creation refused
+  await api('PUT', '/api/account', { name: 'Free User', email: 'free@example.com', licenseKey: '' });
+  const list0 = await api('GET', '/api/workspaces');
+  assert.equal(list0.data.plan.tier, 'free');
+  assert.equal(list0.data.plan.limit, 1);
+  const denied = await api('POST', '/api/workspaces', { name: 'Second' });
+  assert.equal(denied.status, 402, 'free plan cannot create a second business');
+
+  // pro key: 5 businesses
+  await api('PUT', '/api/account', { licenseKey: 'HELIX-PRO-TEST' });
+  assert.equal((await api('GET', '/api/workspaces')).data.plan.limit, 5);
+
+  // founder: unlimited; create + switch and verify isolation
+  await api('PUT', '/api/account', { email: 'luxeforgeio@gmail.com' });
+  assert.equal((await api('GET', '/api/workspaces')).data.plan.limit, null, 'owner is unlimited');
+  const docsBefore = (await api('GET', '/api/documents')).data.length;
+  assert.ok(docsBefore > 0, 'first workspace has documents from earlier tests');
+
+  const created = await api('POST', '/api/workspaces', { name: 'Second Venture' });
+  assert.equal(created.status, 200);
+  await api('POST', `/api/workspaces/${created.data.id}/activate`);
+  assert.equal((await api('GET', '/api/documents')).data.length, 0, 'new business starts empty');
+  assert.equal((await api('GET', '/api/brain')).data.brain.businessName, '', 'fresh brain');
+  await api('POST', '/api/tasks', { title: 'Second-venture task' });
+
+  const list = (await api('GET', '/api/workspaces')).data.list;
+  const first = list.find((w) => !w.active);
+  await api('POST', `/api/workspaces/${first.id}/activate`);
+  assert.equal((await api('GET', '/api/documents')).data.length, docsBefore, 'original documents intact after round-trip');
+  assert.ok(!(await api('GET', '/api/tasks')).data.some((t) => t.title === 'Second-venture task'), 'no leakage between businesses');
+
+  // account/settings are device-global, not per-business
+  assert.equal((await api('GET', '/api/account')).data.email, 'luxeforgeio@gmail.com');
+
+  // cannot delete the active workspace; can delete the other
+  const cur = (await api('GET', '/api/workspaces')).data.list.find((w) => w.active);
+  assert.equal((await api('DELETE', `/api/workspaces/${cur.id}`)).status, 400);
+  assert.equal((await api('DELETE', `/api/workspaces/${created.data.id}`)).status, 200);
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

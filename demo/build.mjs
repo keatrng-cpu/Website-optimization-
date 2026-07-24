@@ -113,6 +113,7 @@ const js = [
   port('server/quickstart.js'),
   port('server/stats.js'),
   port('server/telemetry.js'),
+  port('server/workspaces.js'),
   port('server/zip.js'),
   port('server/export-site.js'),
   read('demo/browser-backend.js'),

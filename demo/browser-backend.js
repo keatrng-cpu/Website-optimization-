@@ -17,6 +17,7 @@ const DEFAULTS = () => ({
   feedback: {}, usageLog: [], agentRuns: [],
   account: { name: '', email: '', company: '', licenseKey: '', role: 'member', createdAt: null },
   telemetry: { keys: {}, days: {} },
+  workspaces: [], activeWorkspace: '',
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -34,6 +35,7 @@ try {
     }
   }
 } catch { /* fresh start */ }
+ensureWorkspaces(db, uid);
 
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch { /* storage full/blocked: demo keeps running in memory */ }
@@ -192,6 +194,7 @@ async function handle(method, pathname, query, body) {
           unread: db.inbox.filter((i) => !i.read).length,
         },
         account: { name: db.account?.name || '', role: db.account?.role || 'member' },
+        workspaces: { list: listWorkspaces(db), limit: planFor(db.account).limit === Infinity ? null : planFor(db.account).limit, tier: planFor(db.account).tier },
       });
 
     case 'brain': {
@@ -735,6 +738,24 @@ async function handle(method, pathname, query, body) {
       break;
     }
 
+    case 'workspaces': {
+      try {
+        if (!p[1] && method === 'GET') {
+          const plan = planFor(db.account);
+          return ok({ list: listWorkspaces(db), plan: { tier: plan.tier, limit: plan.limit === Infinity ? null : plan.limit } });
+        }
+        if (!p[1] && method === 'POST') {
+          const ws = createWorkspace(db, uid, clean(String(body.name || ''), 60));
+          save();
+          return ok({ id: ws.id, name: ws.name });
+        }
+        if (p[2] === 'activate' && method === 'POST') { switchWorkspace(db, p[1]); save(); return ok({ ok: true, active: p[1] }); }
+        if (p[1] && method === 'PATCH') { const ws = renameWorkspace(db, p[1], clean(String(body.name || ''), 60)); save(); return ok({ id: ws.id, name: ws.name }); }
+        if (p[1] && method === 'DELETE') { deleteWorkspace(db, p[1]); save(); return ok({ ok: true }); }
+      } catch (e) { return ok({ error: e.message }, e.statusCode || 400); }
+      break;
+    }
+
     case 'owner': {
       const a = db.account || {};
       if (a.role !== 'owner') return ok({ error: 'owner access required — sign in with the founder account' }, 403);
@@ -784,6 +805,7 @@ async function handle(method, pathname, query, body) {
           else next[k] = v ?? def;
         }
         db = next;
+        ensureWorkspaces(db, uid); // older backups predate multi-business
         for (const a of db.automations) if (a && a.schedule) a.nextRun = computeNextRun(a.schedule);
         save();
         return ok({ ok: true });

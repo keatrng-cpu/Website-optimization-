@@ -206,8 +206,19 @@ function renderSidebar(active) {
   const nav = state.boot?.account?.role === 'owner'
     ? [NAV[0], { id: 'owner', icon: '👑', name: 'Command Center' }, ...NAV.slice(1)]
     : NAV;
+  const ws = state.boot?.workspaces;
+  const activeWs = ws?.list.find((w) => w.active);
   $('#sidebar').innerHTML = `
     <div class="logo"><span class="mark">⬢</span><span>HELIX<small>AI BUSINESS TEAM</small></span></div>
+    ${ws ? `
+    <div class="ws-switch">
+      <button class="ws-pill" id="wsPill" title="Switch business">🏢 <span class="ws-name">${esc(activeWs?.name || 'My business')}</span><span class="dim">▾</span></button>
+      <div class="ws-menu" id="wsMenu">
+        ${ws.list.map((w) => `<button class="ws-item ${w.active ? 'on' : ''}" data-ws="${w.id}">${w.active ? '✓ ' : ''}${esc(w.name)}</button>`).join('')}
+        <button class="ws-item add" id="wsNew">＋ New business</button>
+        <div class="dim" style="padding:5px 12px 8px;font-size:11px">${ws.limit ? `${ws.list.length}/${ws.limit} businesses on the ${ws.tier} plan` : `${ws.list.length} business${ws.list.length === 1 ? '' : 'es'} · unlimited (${ws.tier})`}</div>
+      </div>
+    </div>` : ''}
     <nav class="nav">
       ${nav.map((n) => n.label
         ? `<div class="nav-label">${n.label}</div>`
@@ -216,6 +227,38 @@ function renderSidebar(active) {
              ${n.badge && counts[n.badge] ? `<span class="badge acc">${counts[n.badge]}</span>` : ''}
            </a>`).join('')}
     </nav>`;
+
+  const pill = $('#wsPill');
+  if (pill) {
+    const menu = $('#wsMenu');
+    pill.onclick = (e) => { e.stopPropagation(); menu.classList.toggle('open'); };
+    menu.onclick = async (e) => {
+      const item = e.target.closest('.ws-item');
+      if (!item) return;
+      if (item.id === 'wsNew') {
+        if (ws.limit && ws.list.length >= ws.limit) {
+          toast(ws.tier === 'free' ? 'Free includes 1 business — Pro unlocks 5, Agency unlimited' : `Your plan includes ${ws.limit} — Agency removes the limit`, true);
+          return;
+        }
+        const m = modal(`<h2>🏢 New business</h2>
+          <label>Name</label><input id="wsName" placeholder="My second business">
+          <div class="actions"><button class="btn ghost" id="wsCancel">Cancel</button><button class="btn" id="wsCreate">Create & switch</button></div>`);
+        $('#wsCancel', m).onclick = () => m.remove();
+        $('#wsCreate', m).onclick = async () => {
+          try {
+            const created = await api('POST', '/api/workspaces', { name: $('#wsName', m).value.trim() || 'New business' });
+            await api('POST', `/api/workspaces/${created.id}/activate`);
+            location.reload();
+          } catch (err) { toast(err.message, true); m.remove(); }
+        };
+        return;
+      }
+      const id = item.dataset.ws;
+      if (!id || item.classList.contains('on')) { menu.classList.remove('open'); return; }
+      try { await api('POST', `/api/workspaces/${id}/activate`); location.reload(); }
+      catch (err) { toast(err.message, true); }
+    };
+  }
 }
 
 // ---------- pages ----------
@@ -1531,8 +1574,63 @@ routes.account = async (main) => {
         <div style="margin-top:12px"><button class="btn ghost" id="acKeySave">Save key</button></div>
         <p class="dim" style="margin-top:10px">No key yet? <a href="/#pricing" target="_blank">See plans</a> — the free tier stays fully yours either way.</p>
       </div>
+      <div class="card">
+        <b>🔐 Your data, on any device</b>
+        <p class="muted" style="margin:8px 0;font-size:13px">Your workspaces live on this device and nowhere else. To use HELIX anywhere, carry them with you: download an <b>encrypted backup</b> (AES-256, locked with a passphrase only you know), open HELIX on any device, and restore it. We never see your data — there is nothing to breach.</p>
+        <label>Backup passphrase</label><input id="bkPass" type="password" placeholder="Choose a strong passphrase">
+        <div class="row" style="margin-top:12px;gap:8px">
+          <button class="btn ghost" id="bkExport">⬇ Encrypted backup</button>
+          <button class="btn ghost" id="bkImport">⬆ Restore backup</button>
+          <input type="file" id="bkFile" accept=".hxb" style="display:none">
+        </div>
+        <p class="dim" style="margin-top:10px">All businesses, documents, sites, Brain and settings included. Lose the passphrase and the backup is unreadable — by design.</p>
+      </div>
     </div>
   </div>`;
+
+  const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  async function deriveKey(pass, salt) {
+    const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' }, raw,
+      { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  $('#bkExport', main).onclick = async () => {
+    const pass = $('#bkPass', main).value;
+    if (pass.length < 8) { toast('Use a passphrase of at least 8 characters', true); return; }
+    const data = await (await fetch('/api/export')).text();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveKey(pass, salt);
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(data));
+    const payload = JSON.stringify({ v: 'HXB1', salt: b64(salt), iv: b64(iv), data: b64(cipher) });
+    const url = URL.createObjectURL(new Blob([payload], { type: 'application/octet-stream' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `helix-backup-${new Date().toISOString().slice(0, 10)}.hxb`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Encrypted backup downloaded 🔐');
+  };
+  $('#bkImport', main).onclick = () => {
+    if ($('#bkPass', main).value.length < 8) { toast('Enter the backup passphrase first', true); return; }
+    $('#bkFile', main).click();
+  };
+  $('#bkFile', main).onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const { v, salt, iv, data } = JSON.parse(await file.text());
+      if (v !== 'HXB1') throw new Error('not a HELIX backup file');
+      const key = await deriveKey($('#bkPass', main).value, unb64(salt));
+      const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, key, unb64(data));
+      const state2 = JSON.parse(new TextDecoder().decode(plain));
+      await api('POST', '/api/import', state2);
+      toast('Backup restored — welcome back ⬢');
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      toast(/decrypt|operation/i.test(err.message || '') ? 'Wrong passphrase or corrupted file' : err.message, true);
+    }
+  };
 
   $('#acSave', main).onclick = async () => {
     const name = $('#acName', main).value.trim();
@@ -1787,6 +1885,8 @@ async function mountTicker() {
   });
   setInterval(refreshTickerStats, 1000); // business stats tick every second
 }
+
+document.addEventListener('click', () => { const m = $('#wsMenu'); if (m) m.classList.remove('open'); });
 
 // ---------- boot ----------
 loadBoot().then(() => { navigate(); mountTicker(); }).catch((e) => {
