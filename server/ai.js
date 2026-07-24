@@ -33,7 +33,8 @@ export async function pickModel(settings) {
     const list = (data.data || []).filter((m) => String(m.id).toLowerCase().includes(match));
     // newest first: prefer created/created_at desc, else lexical desc
     list.sort((a, b) => (b.created_at || b.created || 0) - (a.created_at || a.created || 0) || String(b.id).localeCompare(String(a.id)));
-    const chosen = list[0]?.id || fallback;
+    // gateways/relays may list non-matching (e.g. Claude) models — use the first listed
+    const chosen = list[0]?.id || (data.data || [])[0]?.id || fallback;
     _modelCache.set(key, chosen);
     return chosen;
   } catch {
@@ -71,6 +72,7 @@ async function callOpenAI(settings, system, messages) {
     },
     body: JSON.stringify({
       model: await pickModel(settings),
+      max_tokens: 1024, // spend guard; also the cap gateway relays enforce
       messages: [{ role: 'system', content: system }, ...messages],
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),

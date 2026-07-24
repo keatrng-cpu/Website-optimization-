@@ -1108,25 +1108,74 @@ function slugify(name) {
 
 function defaultSections(brain) {
   const name = brain.businessName || 'Your Business';
+  const aud = brain.audience || 'the people we serve';
+  const prod = brain.products || 'our products and services';
+  const about = [
+    brain.description || `${name} exists to make life simpler for ${aud}.`,
+    `We focus on ${prod}, delivered with care, clear communication, and attention to the details that matter.`,
+    brain.goals ? `Right now our focus is simple: ${brain.goals}.` : 'Our promise is simple: do excellent work, communicate clearly, and treat every customer like our most important one.',
+    brain.location ? `We're proudly based in ${brain.location} and love working with our community.` : 'Wherever you are, we make working together easy from the very first conversation.',
+  ].join(' ');
   return [
-    { type: 'hero', headline: brain.tagline || `Welcome to ${name}`, sub: brain.description || 'We help you get results, faster.', cta: 'Get started', ctaLink: '#contact' },
+    { type: 'hero', headline: brain.tagline || `Welcome to ${name}`, sub: brain.description || `We help ${aud} get real results, faster — with ${prod} built around your needs.`, cta: 'Get started', ctaLink: '#contact' },
     {
       type: 'features', title: 'Why choose us', items: [
-        { icon: '⚡', title: 'Fast', text: 'Results in days, not months.' },
-        { icon: '🎯', title: 'Focused', text: 'Built around exactly what you need.' },
-        { icon: '🤝', title: 'Personal', text: 'Real support from real people.' },
+        { icon: '⚡', title: 'Fast', text: `Results in days, not months — we move at the speed ${aud} actually need.` },
+        { icon: '🎯', title: 'Focused', text: `Everything we offer is built around exactly what you need, nothing you don't.` },
+        { icon: '🤝', title: 'Personal', text: 'Real support from real people who know your name and pick up the phone.' },
       ],
     },
-    { type: 'about', title: `About ${name}`, text: brain.description || 'Tell your story here — who you are, who you serve, and why it matters.' },
+    { type: 'about', title: `About ${name}`, text: about },
     {
       type: 'testimonials', title: 'What customers say', items: [
-        { quote: 'Exactly what we needed — professional and fast.', author: 'A happy customer' },
-        { quote: 'The results speak for themselves.', author: 'A repeat client' },
+        { quote: 'Exactly what we needed — professional, fast, and genuinely easy to work with.', author: 'A happy customer' },
+        { quote: 'The results speak for themselves. We came back, and we tell our friends.', author: 'A repeat client' },
       ],
     },
-    { type: 'cta', headline: 'Ready to get started?', sub: 'Reach out today — it takes two minutes.', cta: 'Contact us', ctaLink: '#contact' },
+    {
+      type: 'faq', title: 'Frequently asked questions', items: [
+        { q: `What does ${name} actually do?`, a: brain.description || `We provide ${prod} for ${aud}. In short: we take a real problem off your plate and handle it properly, end to end.` },
+        { q: 'Who do you work with?', a: `Primarily ${aud} — but if you're not sure you fit, just ask. A quick conversation costs nothing and we'll point you in the right direction either way.` },
+        { q: 'How do I get started?', a: 'Use the contact section below to reach out. We respond quickly, ask a few questions to understand what you need, and give you a clear next step — no pressure, no jargon.' },
+        { q: 'What makes you different?', a: brain.tone ? `Our style is ${brain.tone} — and we back it with careful work, honest communication, and follow-through you can rely on.` : 'Care and follow-through. We do what we say, when we said we would, and keep you informed the whole way.' },
+        { q: 'What if I have more questions?', a: 'Ask away — the chat on this page can answer right now, or send a message via the contact section and a real person will get back to you.' },
+      ],
+    },
+    { type: 'cta', headline: 'Ready to get started?', sub: 'Reach out today — it takes two minutes and there is no obligation.', cta: 'Contact us', ctaLink: '#contact' },
     { type: 'contact', title: 'Contact', email: '', phone: '', address: brain.location || '' },
   ];
+}
+
+// Deterministic <title>: always 15–60 chars, "{Business} — {tagline}" pattern.
+function composeTitle(site, brain) {
+  const name = site.name || brain.businessName || 'Welcome';
+  let t = brain.tagline ? `${name} — ${brain.tagline}` : name;
+  if (t.length < 15) t = `${t} — ${brain.industry || 'Official Site'}`;
+  if (t.length < 15) t = `${t} | Quality & Care`;
+  if (t.length > 60) {
+    const cut = t.slice(0, 60).lastIndexOf(' ');
+    t = t.slice(0, cut > 40 ? cut : 60).trim();
+  }
+  return t;
+}
+
+// Deterministic meta description: always 140–158 chars, composed from Brain.
+function composeMeta(site, brain) {
+  const name = brain.businessName || site.name;
+  const parts = [];
+  if (brain.description) parts.push(brain.description.trim());
+  if (brain.products) parts.push(`Offering ${brain.products.trim()}.`);
+  if (brain.audience) parts.push(`Built for ${brain.audience.trim()}.`);
+  if (brain.location) parts.push(`Based in ${brain.location.trim()}.`);
+  parts.push(`Get in touch with ${name} today.`);
+  let m = parts.join(' ').replace(/\s+/g, ' ').trim();
+  if (m.length < 140) m += ` Fast, friendly, and focused on results — discover what ${name} can do for you.`;
+  if (m.length < 140) m += ' Quality service, clear communication, and care in every detail.';
+  if (m.length > 158) {
+    const cut = m.slice(0, 158).lastIndexOf(' ');
+    m = m.slice(0, cut > 140 ? cut : 158).trim();
+  }
+  return m;
 }
 
 const esc = (s) => String(s ?? '')
@@ -1165,6 +1214,11 @@ const RENDERERS = {
     <p>${esc(s.sub)}</p>
     ${s.cta ? `<a class="btn" href="${esc(s.ctaLink || '#contact')}">${esc(s.cta)}</a>` : ''}
   </section>`,
+  faq: (s) => `
+  <section class="faq">
+    <h2>${esc(s.title)}</h2>
+    ${(s.items || []).map((i) => `<details><summary>${esc(i.q)}</summary><p>${esc(i.a)}</p></details>`).join('')}
+  </section>`,
   contact: (s) => `
   <section class="contact" id="contact">
     <h2>${esc(s.title)}</h2>
@@ -1179,7 +1233,7 @@ const RENDERERS = {
 // A floating Claude-powered chat widget. `endpoint` is where it POSTs
 // {messages:[{role,content}]} and expects {reply}. Palette-matched, and it
 // degrades to a friendly message if the endpoint is unreachable.
-function chatWidget(name, endpoint) {
+function chatWidget(name, endpoint, slug = '') {
   const greeting = `Hi! I'm the assistant for ${name}. Ask me anything.`;
   return `
 <div id="hx-chat">
@@ -1210,9 +1264,12 @@ function chatWidget(name, endpoint) {
   var msgs=[{role:'assistant',content:${JSON.stringify(greeting)}}];
   var panel=document.getElementById('hx-chat-panel'),box=document.getElementById('hx-chat-msgs');
   var btn=document.getElementById('hx-chat-btn'),form=document.getElementById('hx-chat-form'),input=document.getElementById('hx-chat-in');
+  var KEY=${JSON.stringify('hx-chat-open-' + (slug || 'site'))};
   function render(){box.innerHTML=msgs.map(function(m){return '<div class="hx-m '+(m.role==='user'?'user':'bot')+'">'+m.content.replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})+'</div>';}).join('');box.scrollTop=box.scrollHeight;}
-  function toggle(open){panel.hidden=!open;if(open){render();input.focus();}}
+  // Starts CLOSED (bubble only); remembers the visitor's choice per site.
+  function toggle(open){panel.hidden=!open;try{localStorage.setItem(KEY,open?'1':'0');}catch(e){}if(open){render();input.focus();}}
   btn.onclick=function(){toggle(panel.hidden);};
+  try{if(localStorage.getItem(KEY)==='1'){panel.hidden=false;render();}}catch(e){}
   document.getElementById('hx-chat-close').onclick=function(){toggle(false);};
   form.onsubmit=function(e){
     e.preventDefault();var t=input.value.trim();if(!t)return;input.value='';
@@ -1230,11 +1287,12 @@ function chatWidget(name, endpoint) {
 function renderSite(site, brain, opts = {}) {
   const p = PALETTES[site.palette] || PALETTES.midnight;
   const name = brain.businessName || site.name;
-  const title = `${site.name}${brain.tagline ? ' — ' + brain.tagline : ''}`.slice(0, 60);
-  const desc = (brain.description || `${name}: ${brain.tagline || 'quality you can trust.'}`).slice(0, 158);
+  const title = composeTitle(site, brain);
+  const desc = composeMeta(site, brain);
+  const canonical = opts.canonical || `/sites/${site.slug}`;
   const body = (site.sections || []).map((s) => (RENDERERS[s.type] || (() => ''))(s)).join('\n');
   const chatOn = opts.chat !== false && site.chatEnabled !== false;
-  const widget = chatOn ? chatWidget(name, opts.chatEndpoint || `/api/sites/${site.slug}/chat`) : '';
+  const widget = chatOn ? chatWidget(name, opts.chatEndpoint || `/api/sites/${site.slug}/chat`, site.slug) : '';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -1242,6 +1300,7 @@ function renderSite(site, brain, opts = {}) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
+<link rel="canonical" href="${esc(canonical)}">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:type" content="website">
@@ -1266,6 +1325,9 @@ function renderSite(site, brain, opts = {}) {
   figcaption{color:var(--muted);font-size:.9rem}
   .cta-band{text-align:center;background:var(--surface);border-radius:24px;padding:56px 32px;margin:32px 0}
   .cta-band p{margin:12px 0 28px}
+  .faq details{background:var(--surface);border-radius:12px;padding:14px 18px;margin-bottom:10px}
+  .faq summary{cursor:pointer;font-weight:600}
+  .faq p{margin-top:8px}
   .contact ul{list-style:none}
   .contact li{margin:8px 0}
   .contact a{color:var(--accent)}
@@ -1729,7 +1791,13 @@ function buildTools() {
       input_schema: { type: 'object', properties: { name: { type: 'string' }, palette: { type: 'string' } }, required: ['name'] },
       async run(ctx, { name, palette }) {
         const s = ctx.store.state;
-        let slug = slugify(name);
+        // idempotent: a site with this name/slug already exists → reuse, don't duplicate
+        const wanted = slugify(name);
+        const existing = s.sites.find((x) => x.slug === wanted || x.name.toLowerCase() === String(name).toLowerCase());
+        if (existing) {
+          return { site: existing.name, slug: existing.slug, url: `/sites/${existing.slug}`, existing: true };
+        }
+        let slug = wanted;
         while (s.sites.some((x) => x.slug === slug)) slug += '-' + uid().slice(0, 4);
         const site = { id: uid(), name: String(name), slug, palette: PALETTES[palette] ? palette : 'midnight', sections: defaultSections(s.brain), published: true, createdAt: Date.now(), updatedAt: Date.now() };
         s.sites.unshift(site);
@@ -1868,8 +1936,17 @@ async function runPlanner(ctx, { goal }) {
     plan.push(['create_task', { title: goal.slice(0, 80) || 'Follow up on this goal', helperId: 'vizzy', priority: 'medium' }]);
   }
 
+  // dedupe identical steps within a run (e.g. two branches both adding an audit)
+  const seen = new Set();
+  const deduped = plan.filter(([tool, args]) => {
+    const key = tool + JSON.stringify(args);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
   const steps = [];
-  for (const [tool, args] of plan) {
+  for (const [tool, args] of deduped) {
     let result;
     try { result = await executeTool(ctx, tool, args); }
     catch (e) { result = { error: e.message }; }
@@ -2156,7 +2233,8 @@ Without a key set, the chat still loads and returns a friendly "we'll follow up"
 
 // Returns { files: [{name,data}], zip: Uint8Array }
 function buildExport(site, brain) {
-  const html = renderSite(site, brain, { chat: true, chatEndpoint: '/.netlify/functions/chat' });
+  // canonical "/" = the deployed site's root; correct once it lives on its own domain
+  const html = renderSite(site, brain, { chat: true, chatEndpoint: '/.netlify/functions/chat', canonical: '/' });
   const files = [
     { name: 'index.html', data: html },
     { name: 'netlify/functions/chat.js', data: buildChatFunction(brain) },
@@ -2216,14 +2294,43 @@ function computeNextRun(schedule, from = Date.now()) {
   return d.getTime();
 }
 
-function ask(helperId, message) {
+// Real AI when a CORS-open, OpenAI-compatible gateway is configured in
+// Settings (base URL + key); the offline engine otherwise / on any failure.
+async function askGateway(helper, message) {
+  const st = db.settings;
+  if (st.provider !== 'openai' || !st.apiKey || !st.baseUrl) return null;
+  const system = systemPrompt(helper, db.brain, db.knowledge, db);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + st.apiKey },
+      body: JSON.stringify({
+        model: st.model || 'auto', // gateways auto-discover when unspecified
+        max_tokens: 1024,          // spend guard (also enforced relay-side)
+        messages: [{ role: 'system', content: system }, { role: 'user', content: message }],
+      }),
+      signal: ctl.signal,
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const text = d?.choices?.[0]?.message?.content || '';
+    return text.trim() ? { text, engine: 'gateway' } : null;
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
+
+async function ask(helperId, message) {
   const helper = HELPER_MAP[helperId] || HELPER_MAP.vizzy;
+  const live = await askGateway(helper, message);
+  if (live) return live;
   return { text: offlineGenerate({ helper, brain: db.brain, message, workspace: db }), engine: 'offline' };
 }
 
-function runAutomationNow(a) {
+async function runAutomationNow(a) {
   const helper = HELPER_MAP[a.helperId] || HELPER_MAP.vizzy;
-  const { text, engine } = ask(helper.id, a.prompt);
+  const { text, engine } = await ask(helper.id, a.prompt);
   const doc = {
     id: uid(), title: `${a.name} — ${new Date().toLocaleDateString()}`, kind: 'automation',
     helperId: helper.id, content: text, engine, source: a.id, createdAt: Date.now(),
@@ -2345,7 +2452,7 @@ async function handle(method, pathname, query, body) {
         const _c = clean(String(body.content));
         chat.messages.push({ role: 'user', content: _c, at: Date.now() });
         if (chat.messages.length === 1) chat.title = _c.slice(0, 60);
-        const { text, engine } = ask(chat.helperId, _c);
+        const { text, engine } = await ask(chat.helperId, _c);
         const reply = { role: 'assistant', content: text, at: Date.now(), engine };
         chat.messages.push(reply); save();
         return ok({ reply, chat: { id: chat.id, title: chat.title } });
@@ -2376,7 +2483,7 @@ async function handle(method, pathname, query, body) {
       if (!task) return notFound();
       if (p[2] === 'run' && method === 'POST') {
         const helperId = task.helperId || 'vizzy';
-        const { text, engine } = ask(helperId, `Complete this task and produce the deliverable:\nTask: ${task.title}${task.notes ? `\nDetails: ${task.notes}` : ''}`);
+        const { text, engine } = await ask(helperId, `Complete this task and produce the deliverable:\nTask: ${task.title}${task.notes ? `\nDetails: ${task.notes}` : ''}`);
         const doc = { id: uid(), title: `Task: ${task.title}`, kind: 'task', helperId, content: text, engine, source: task.id, createdAt: Date.now() };
         db.documents.unshift(doc);
         task.status = 'done';
@@ -2409,7 +2516,7 @@ async function handle(method, pathname, query, body) {
         for (const f of pu.fields) {
           if (f.required && !String(inputs[f.key] || '').trim()) return bad(`"${f.label}" is required`);
         }
-        const { text, engine } = ask(pu.helperId, pu.buildPrompt(inputs));
+        const { text, engine } = await ask(pu.helperId, pu.buildPrompt(inputs));
         const doc = { id: uid(), title: pu.name, kind: 'powerup', helperId: pu.helperId, content: text, engine, source: pu.id, createdAt: Date.now() };
         db.documents.unshift(doc); save();
         return ok(doc);
@@ -2453,7 +2560,7 @@ async function handle(method, pathname, query, body) {
       const a = db.automations.find((x) => x.id === id);
       if (!a) return notFound();
       if (p[2] === 'run' && method === 'POST') {
-        const doc = runAutomationNow(a);
+        const doc = await runAutomationNow(a);
         return ok({ automation: a, document: doc });
       }
       if (method === 'PATCH') {
@@ -2498,6 +2605,7 @@ async function handle(method, pathname, query, body) {
           sections: defaultSections(db.brain),
           published: true, createdAt: Date.now(), updatedAt: Date.now(),
         };
+        site.birthScore = auditHTML(renderSite(site, db.brain), `Studio site: ${site.name}`).score;
         db.sites.unshift(site); save();
         return ok(site, 201);
       }
@@ -2508,7 +2616,7 @@ async function handle(method, pathname, query, body) {
         const history = Array.isArray(body.messages) ? body.messages : [];
         const last = history.filter((m) => m && m.role === 'user' && m.content).slice(-1)[0];
         if (!last) return bad('send a user message');
-        const { text } = ask('vizzy', clean(String(last.content), 2000));
+        const { text } = await ask('vizzy', clean(String(last.content), 2000));
         return ok({ ok: true, reply: (text || '').slice(0, 2000) });
       }
       if (p[2] === 'export' && method === 'GET') {
@@ -2521,6 +2629,7 @@ async function handle(method, pathname, query, body) {
         // demo always uses the offline engine, so regenerate from the Brain
         site.sections = defaultSections(db.brain);
         site.updatedAt = Date.now();
+        site.birthScore = auditHTML(renderSite(site, db.brain), `Studio site: ${site.name}`).score;
         save();
         return ok(site);
       }
@@ -2561,7 +2670,7 @@ async function handle(method, pathname, query, body) {
         const created = [];
         for (let i = 0; i < 7; i++) {
           const platform = platforms[i % platforms.length];
-          const { text } = ask('soshie', `Write ONE ${platform} post about ${angles[i]}. Return only the post text, ready to publish.`);
+          const { text } = await ask('soshie', `Write ONE ${platform} post about ${angles[i]}. Return only the post text, ready to publish.`);
           const date = new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10);
           const post = { id: uid(), platform, content: text, date, status: 'draft', helperId: 'soshie', createdAt: Date.now() };
           db.calendar.unshift(post);
@@ -2602,7 +2711,7 @@ async function handle(method, pathname, query, body) {
     case 'emails': {
       if (p[1] === 'generate' && method === 'POST') {
         const goal = body.goal || 'a promotional campaign';
-        const { text } = ask('emmie', `Write an email campaign for: ${goal}. Include a subject line, preheader, and full body.`);
+        const { text } = await ask('emmie', `Write an email campaign for: ${goal}. Include a subject line, preheader, and full body.`);
         const subjectMatch = text.match(/subject[^:\n]*:\s*(.+)/i);
         const email = {
           id: uid(),
@@ -2640,7 +2749,26 @@ async function handle(method, pathname, query, body) {
           if (!site) return notFound('site not found');
           report = auditHTML(renderSite(site, db.brain), `Studio site: ${site.name}`);
         } else if (body.url) {
-          return { status: 502, data: { error: 'Auditing external URLs needs the full HELIX app (this demo runs sandboxed in your browser). Pick one of your Studio sites instead — that works right here.' } };
+          // CORS-free path: a configured gateway relay fetches + audits server-side
+          const st = db.settings;
+          if (st.provider === 'openai' && st.apiKey && st.baseUrl) {
+            try {
+              const ctl = new AbortController();
+              const timer = setTimeout(() => ctl.abort(), 20000);
+              const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/helix/audit?url=' + encodeURIComponent(body.url), {
+                headers: { authorization: 'Bearer ' + st.apiKey }, signal: ctl.signal,
+              }).finally(() => clearTimeout(timer));
+              if (r.ok) {
+                const rep = await r.json();
+                if (rep && typeof rep.score === 'number' && Array.isArray(rep.checks)) {
+                  report = { target: body.url, createdAt: Date.now(), ...rep };
+                }
+              }
+            } catch { /* fall through to the honest message */ }
+          }
+          if (!report) {
+            return { status: 502, data: { error: 'Auditing external URLs from the browser needs a relay: connect your AI gateway in Settings (base URL + key) and try again — or use the installable app. Studio-site audits work right here either way.' } };
+          }
         } else return bad('provide url or siteId');
         report.id = uid();
         db.seoAudits.unshift(report);
@@ -2774,6 +2902,7 @@ return { handle, previewHTML, recordView, exportZip, exportJSON: () => JSON.stri
 
 
 // ---------- demo glue: fetch shim + link handling ----------
+window.HELIX_DEMO = true;
 const _fetch = window.fetch.bind(window);
 window.fetch = async (input, opts = {}) => {
   const url = typeof input === 'string' ? input : input.url;
@@ -2831,6 +2960,9 @@ function downloadBlob(blob, filename) {
 
 /* HELIX SPA — vanilla JS, hash router, zero dependencies. */
 'use strict';
+
+// Set by the single-file demo build; false in the installable app.
+const DEMO_MODE = typeof window !== 'undefined' && !!window.HELIX_DEMO;
 
 // ---------- utilities ----------
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -2925,6 +3057,26 @@ function md(text) {
     .replace(/`([^`\n]+)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   return `<div class="md">${html}</div>`;
+}
+
+// Empty-Brain guard: Brain-dependent actions nudge toward setup first.
+// Resolves true to proceed (Brain is set, or "continue anyway"), false to stop.
+async function brainGuard(actionLabel) {
+  let brain;
+  try { ({ brain } = await api('GET', '/api/brain')); } catch { return true; }
+  if (brain.businessName) return true;
+  return new Promise((resolve) => {
+    const m = modal(`
+      <h2>🧠 Teach the Brain first?</h2>
+      <p class="dim" style="margin-top:6px">${esc(actionLabel)} works best when your team knows your business.
+      Filling in the Brain takes about 2 minutes — or continue with placeholder content.</p>
+      <div class="actions">
+        <button class="btn ghost" id="bgCont">Continue anyway</button>
+        <button class="btn" id="bgGo">🧠 Set up Brain</button>
+      </div>`);
+    $('#bgGo', m).onclick = () => { m.remove(); location.hash = '#/brain'; resolve(false); };
+    $('#bgCont', m).onclick = () => { m.remove(); resolve(true); };
+  });
 }
 
 function modal(inner, { wide = false } = {}) {
@@ -3381,6 +3533,7 @@ routes.powerups = async (main) => {
       const inputs = {};
       m.querySelectorAll('[data-key]').forEach((i) => { inputs[i.dataset.key] = i.value; });
       const btn = $('#puRun', m);
+      if (!(await brainGuard(p.name))) { m.remove(); return; }
       btn.disabled = true; btn.textContent = '⏳ Generating…';
       try {
         const doc = await api('POST', `/api/powerups/${id}/run`, { inputs });
@@ -3533,11 +3686,13 @@ routes.sites = async (main, [siteId]) => {
     $('#sCancel', m).onclick = () => m.remove();
     $('#sSave', m).onclick = async () => {
       const btn = $('#sSave', m);
+      if (!(await brainGuard('Website generation'))) { m.remove(); return; }
       btn.disabled = true; btn.textContent = '⏳ Building…';
       try {
         const site = await api('POST', '/api/sites', { name: $('#sName', m).value, palette: $('#sPalette', m).value });
-        await api('POST', `/api/sites/${site.id}/generate`);
-        m.remove(); toast('Website is live 🎉');
+        const gen = await api('POST', `/api/sites/${site.id}/generate`);
+        m.remove();
+        toast(gen.birthScore ? `Website is live 🎉 Born at ${gen.birthScore}/100 on the SEO auditor` : 'Website is live 🎉');
         location.hash = `#/sites/${site.id}`;
       } catch (err) { btn.disabled = false; btn.textContent = 'Create & generate'; toast(err.message, true); }
     };
@@ -3556,6 +3711,7 @@ async function siteEditor(main, siteId) {
     features: ['title'],
     about: ['title', 'text'],
     testimonials: ['title'],
+    faq: ['title'],
     cta: ['headline', 'sub', 'cta', 'ctaLink'],
     contact: ['title', 'email', 'phone', 'address'],
   };
@@ -3828,6 +3984,9 @@ routes.settings = async (main) => {
         <input name="model" value="${esc(s.model)}" placeholder="claude-sonnet-5 / gpt-4o-mini / llama3.2">
         <label>Base URL (optional)</label>
         <input name="baseUrl" value="${esc(s.baseUrl)}" placeholder="e.g. http://localhost:11434 for Ollama">
+        <p class="dim" style="margin-top:6px">Works with any OpenAI-compatible endpoint — including a personal
+        server-side gateway/relay, which keeps real keys off this device and can also power
+        CORS-free URL audits in SEO.</p>
         <div style="margin-top:16px"><button class="btn">Save settings</button></div>
         <p class="dim" style="margin-top:12px">Your key is stored only in the local <code>data/db.json</code> on this machine and is never echoed back to the browser.</p>
       </form>
@@ -4049,8 +4208,11 @@ routes.autopilot = async (main) => {
     return '';
   };
 
+  let running = false; // one run at a time — a double-tap must not fire twice
   async function run(goal) {
-    if (!goal.trim()) return;
+    if (!goal.trim() || running) return;
+    if (!(await brainGuard('Autopilot'))) return;
+    running = true;
     $('#go', main).disabled = true; $('#go', main).textContent = '⏳ Working…';
     out.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Autopilot is working on “${esc(goal)}”…</b></div></div>`;
     try {
@@ -4074,6 +4236,7 @@ routes.autopilot = async (main) => {
     } catch (e) {
       out.innerHTML = `<div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div>`;
     } finally {
+      running = false;
       $('#go', main).disabled = false; $('#go', main).textContent = '🚀 Run Autopilot';
     }
   }
@@ -4123,10 +4286,26 @@ routes.integrations = async (main) => {
         </div>`).join('')}
     </div>` : ''}
 
+    ${DEMO_MODE ? `
+    <div class="card" style="margin-bottom:16px;border-color:var(--yellow)">
+      <b>🔒 Connecting is disabled in this browser demo — by design.</b>
+      <p class="dim" style="margin-top:6px">Two honest reasons: most of these APIs block direct browser calls (CORS),
+      and pasting secret keys into a web page is an anti-pattern we won't teach. In the
+      <b>installable app</b>, keys live in a local file on your machine and calls run server-side,
+      so every connection below works for real. Services gain browser support here as
+      server-side relays are added (the same pattern as the AI gateway in Settings).</p>
+    </div>` : ''}
     <h2 style="font-size:15px;margin:6px 0 4px">Add a connection</h2>
-    <p class="dim" style="margin-bottom:14px">Pick a service to pre-fill the details, then paste your key.</p>
+    <p class="dim" style="margin-bottom:14px">${DEMO_MODE ? 'Available in the installable app — browse the catalog below.' : 'Pick a service to pre-fill the details, then paste your key.'}</p>
     <div class="grid c3">
-      ${presets.map((p) => `
+      ${presets.map((p) => DEMO_MODE ? `
+        <div class="card func-card" style="text-align:left;opacity:.75">
+          <div class="row" style="gap:10px;align-items:flex-start">
+            <span class="learn-ic">${p.icon}</span>
+            <span><b>${esc(p.name)}</b><p class="muted" style="margin-top:3px">${esc(p.desc)}</p></span>
+          </div>
+          <span class="badge warn">installable app / server relay</span>
+        </div>` : `
         <button class="card func-card" data-preset="${p.id}" style="text-align:left;cursor:pointer">
           <div class="row" style="gap:10px;align-items:flex-start">
             <span class="learn-ic">${p.icon}</span>

@@ -210,7 +210,8 @@ Without a key set, the chat still loads and returns a friendly "we'll follow up"
 
 // Returns { files: [{name,data}], zip: Uint8Array }
 export function buildExport(site, brain) {
-  const html = renderSite(site, brain, { chat: true, chatEndpoint: '/.netlify/functions/chat' });
+  // canonical "/" = the deployed site's root; correct once it lives on its own domain
+  const html = renderSite(site, brain, { chat: true, chatEndpoint: '/.netlify/functions/chat', canonical: '/' });
   const files = [
     { name: 'index.html', data: html },
     { name: 'netlify/functions/chat.js', data: buildChatFunction(brain) },

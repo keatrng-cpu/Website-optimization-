@@ -47,14 +47,43 @@ function computeNextRun(schedule, from = Date.now()) {
   return d.getTime();
 }
 
-function ask(helperId, message) {
+// Real AI when a CORS-open, OpenAI-compatible gateway is configured in
+// Settings (base URL + key); the offline engine otherwise / on any failure.
+async function askGateway(helper, message) {
+  const st = db.settings;
+  if (st.provider !== 'openai' || !st.apiKey || !st.baseUrl) return null;
+  const system = systemPrompt(helper, db.brain, db.knowledge, db);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + st.apiKey },
+      body: JSON.stringify({
+        model: st.model || 'auto', // gateways auto-discover when unspecified
+        max_tokens: 1024,          // spend guard (also enforced relay-side)
+        messages: [{ role: 'system', content: system }, { role: 'user', content: message }],
+      }),
+      signal: ctl.signal,
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const text = d?.choices?.[0]?.message?.content || '';
+    return text.trim() ? { text, engine: 'gateway' } : null;
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
+
+async function ask(helperId, message) {
   const helper = HELPER_MAP[helperId] || HELPER_MAP.vizzy;
+  const live = await askGateway(helper, message);
+  if (live) return live;
   return { text: offlineGenerate({ helper, brain: db.brain, message, workspace: db }), engine: 'offline' };
 }
 
-function runAutomationNow(a) {
+async function runAutomationNow(a) {
   const helper = HELPER_MAP[a.helperId] || HELPER_MAP.vizzy;
-  const { text, engine } = ask(helper.id, a.prompt);
+  const { text, engine } = await ask(helper.id, a.prompt);
   const doc = {
     id: uid(), title: `${a.name} — ${new Date().toLocaleDateString()}`, kind: 'automation',
     helperId: helper.id, content: text, engine, source: a.id, createdAt: Date.now(),
@@ -176,7 +205,7 @@ async function handle(method, pathname, query, body) {
         const _c = clean(String(body.content));
         chat.messages.push({ role: 'user', content: _c, at: Date.now() });
         if (chat.messages.length === 1) chat.title = _c.slice(0, 60);
-        const { text, engine } = ask(chat.helperId, _c);
+        const { text, engine } = await ask(chat.helperId, _c);
         const reply = { role: 'assistant', content: text, at: Date.now(), engine };
         chat.messages.push(reply); save();
         return ok({ reply, chat: { id: chat.id, title: chat.title } });
@@ -207,7 +236,7 @@ async function handle(method, pathname, query, body) {
       if (!task) return notFound();
       if (p[2] === 'run' && method === 'POST') {
         const helperId = task.helperId || 'vizzy';
-        const { text, engine } = ask(helperId, `Complete this task and produce the deliverable:\nTask: ${task.title}${task.notes ? `\nDetails: ${task.notes}` : ''}`);
+        const { text, engine } = await ask(helperId, `Complete this task and produce the deliverable:\nTask: ${task.title}${task.notes ? `\nDetails: ${task.notes}` : ''}`);
         const doc = { id: uid(), title: `Task: ${task.title}`, kind: 'task', helperId, content: text, engine, source: task.id, createdAt: Date.now() };
         db.documents.unshift(doc);
         task.status = 'done';
@@ -240,7 +269,7 @@ async function handle(method, pathname, query, body) {
         for (const f of pu.fields) {
           if (f.required && !String(inputs[f.key] || '').trim()) return bad(`"${f.label}" is required`);
         }
-        const { text, engine } = ask(pu.helperId, pu.buildPrompt(inputs));
+        const { text, engine } = await ask(pu.helperId, pu.buildPrompt(inputs));
         const doc = { id: uid(), title: pu.name, kind: 'powerup', helperId: pu.helperId, content: text, engine, source: pu.id, createdAt: Date.now() };
         db.documents.unshift(doc); save();
         return ok(doc);
@@ -284,7 +313,7 @@ async function handle(method, pathname, query, body) {
       const a = db.automations.find((x) => x.id === id);
       if (!a) return notFound();
       if (p[2] === 'run' && method === 'POST') {
-        const doc = runAutomationNow(a);
+        const doc = await runAutomationNow(a);
         return ok({ automation: a, document: doc });
       }
       if (method === 'PATCH') {
@@ -329,6 +358,7 @@ async function handle(method, pathname, query, body) {
           sections: defaultSections(db.brain),
           published: true, createdAt: Date.now(), updatedAt: Date.now(),
         };
+        site.birthScore = auditHTML(renderSite(site, db.brain), `Studio site: ${site.name}`).score;
         db.sites.unshift(site); save();
         return ok(site, 201);
       }
@@ -339,7 +369,7 @@ async function handle(method, pathname, query, body) {
         const history = Array.isArray(body.messages) ? body.messages : [];
         const last = history.filter((m) => m && m.role === 'user' && m.content).slice(-1)[0];
         if (!last) return bad('send a user message');
-        const { text } = ask('vizzy', clean(String(last.content), 2000));
+        const { text } = await ask('vizzy', clean(String(last.content), 2000));
         return ok({ ok: true, reply: (text || '').slice(0, 2000) });
       }
       if (p[2] === 'export' && method === 'GET') {
@@ -352,6 +382,7 @@ async function handle(method, pathname, query, body) {
         // demo always uses the offline engine, so regenerate from the Brain
         site.sections = defaultSections(db.brain);
         site.updatedAt = Date.now();
+        site.birthScore = auditHTML(renderSite(site, db.brain), `Studio site: ${site.name}`).score;
         save();
         return ok(site);
       }
@@ -392,7 +423,7 @@ async function handle(method, pathname, query, body) {
         const created = [];
         for (let i = 0; i < 7; i++) {
           const platform = platforms[i % platforms.length];
-          const { text } = ask('soshie', `Write ONE ${platform} post about ${angles[i]}. Return only the post text, ready to publish.`);
+          const { text } = await ask('soshie', `Write ONE ${platform} post about ${angles[i]}. Return only the post text, ready to publish.`);
           const date = new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10);
           const post = { id: uid(), platform, content: text, date, status: 'draft', helperId: 'soshie', createdAt: Date.now() };
           db.calendar.unshift(post);
@@ -433,7 +464,7 @@ async function handle(method, pathname, query, body) {
     case 'emails': {
       if (p[1] === 'generate' && method === 'POST') {
         const goal = body.goal || 'a promotional campaign';
-        const { text } = ask('emmie', `Write an email campaign for: ${goal}. Include a subject line, preheader, and full body.`);
+        const { text } = await ask('emmie', `Write an email campaign for: ${goal}. Include a subject line, preheader, and full body.`);
         const subjectMatch = text.match(/subject[^:\n]*:\s*(.+)/i);
         const email = {
           id: uid(),
@@ -471,7 +502,26 @@ async function handle(method, pathname, query, body) {
           if (!site) return notFound('site not found');
           report = auditHTML(renderSite(site, db.brain), `Studio site: ${site.name}`);
         } else if (body.url) {
-          return { status: 502, data: { error: 'Auditing external URLs needs the full HELIX app (this demo runs sandboxed in your browser). Pick one of your Studio sites instead — that works right here.' } };
+          // CORS-free path: a configured gateway relay fetches + audits server-side
+          const st = db.settings;
+          if (st.provider === 'openai' && st.apiKey && st.baseUrl) {
+            try {
+              const ctl = new AbortController();
+              const timer = setTimeout(() => ctl.abort(), 20000);
+              const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/helix/audit?url=' + encodeURIComponent(body.url), {
+                headers: { authorization: 'Bearer ' + st.apiKey }, signal: ctl.signal,
+              }).finally(() => clearTimeout(timer));
+              if (r.ok) {
+                const rep = await r.json();
+                if (rep && typeof rep.score === 'number' && Array.isArray(rep.checks)) {
+                  report = { target: body.url, createdAt: Date.now(), ...rep };
+                }
+              }
+            } catch { /* fall through to the honest message */ }
+          }
+          if (!report) {
+            return { status: 502, data: { error: 'Auditing external URLs from the browser needs a relay: connect your AI gateway in Settings (base URL + key) and try again — or use the installable app. Studio-site audits work right here either way.' } };
+          }
         } else return bad('provide url or siteId');
         report.id = uid();
         db.seoAudits.unshift(report);

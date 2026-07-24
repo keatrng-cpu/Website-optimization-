@@ -586,6 +586,84 @@ test('forge hardening: model auto-discovery picks newest, respects user choice, 
   } finally { globalThis.fetch = realFetch; }
 });
 
+test('spec#2: sites are born at 95+ on our own auditor (rich AND empty Brain)', async () => {
+  // rich Brain (set earlier in the suite)
+  const rich = await api('POST', '/api/sites', { name: 'Born Score Rich' });
+  assert.equal(rich.status, 201);
+  assert.ok(rich.data.birthScore >= 95, `rich-brain birth score ${rich.data.birthScore} should be ≥95`);
+  const auditRich = await api('POST', '/api/seo/audit', { siteId: rich.data.id });
+  assert.ok(auditRich.data.score >= 95);
+  for (const id of ['title-length', 'meta-desc-length', 'word-count', 'canonical']) {
+    assert.ok(auditRich.data.checks.find((c) => c.id === id)?.pass, `check "${id}" must pass at birth`);
+  }
+
+  // empty Brain: placeholder content must still be born compliant
+  const saved = (await api('GET', '/api/brain')).data.brain;
+  const blank = {};
+  for (const k of Object.keys(saved)) blank[k] = '';
+  await api('PUT', '/api/brain', blank);
+  const bare = await api('POST', '/api/sites', { name: 'Born Score Bare' });
+  assert.ok(bare.data.birthScore >= 95, `empty-brain birth score ${bare.data.birthScore} should be ≥95`);
+  await api('PUT', '/api/brain', saved); // restore
+
+  await api('DELETE', `/api/sites/${rich.data.id}`);
+  await api('DELETE', `/api/sites/${bare.data.id}`);
+});
+
+test('spec#2: served pages carry canonical + compliant title/meta lengths', async () => {
+  const sites = await api('GET', '/api/sites');
+  const html = await (await fetch(`${base}/sites/${sites.data.find((s) => s.published).slug}`)).text();
+  const canonical = html.match(/<link rel="canonical" href="([^"]+)"/);
+  assert.ok(canonical, 'canonical link present');
+  assert.ok(canonical[1].startsWith('http'), 'live canonical is absolute (from Host header)');
+  const title = html.match(/<title>([^<]+)<\/title>/)[1];
+  assert.ok(title.length >= 15 && title.length <= 60, `title ${title.length} chars in [15,60]`);
+  const meta = html.match(/<meta name="description" content="([^"]+)"/)[1];
+  assert.ok(meta.length >= 50 && meta.length <= 160, `meta ${meta.length} chars in [50,160]`);
+});
+
+test('spec#1: autopilot is idempotent — same goal twice creates ONE site, audits deduped per run', async () => {
+  const saved = (await api('GET', '/api/brain')).data.brain;
+  await api('PUT', '/api/brain', { businessName: 'Idem Widgets Ltd' });
+
+  const before = (await api('GET', '/api/sites')).data.length;
+  const goal = 'Get me online: build and audit a website for my business';
+  const run1 = await api('POST', '/api/agent/run', { goal });
+  const run2 = await api('POST', '/api/agent/run', { goal });
+  const after = (await api('GET', '/api/sites')).data.length;
+
+  assert.equal(after, before + 1, 'two identical runs must yield exactly one new site');
+  const create2 = run2.data.steps.find((s) => s.tool === 'create_website');
+  assert.equal(create2.result.existing, true, 'second run reports the site already exists');
+  for (const run of [run1, run2]) {
+    const audits = run.data.steps.filter((s) => s.tool === 'run_seo_audit');
+    assert.equal(audits.length, 1, 'one audit per target per run');
+  }
+
+  // direct tool path is idempotent too
+  const t1 = await api('POST', '/api/agent/act', { tool: 'create_website', args: { name: 'Idem Widgets Ltd' } });
+  assert.equal(t1.data.result.existing, true);
+  await api('PUT', '/api/brain', saved);
+});
+
+test('spec#3: site chat widget starts closed and persists per site', async () => {
+  const sites = await api('GET', '/api/sites');
+  const slug = sites.data.find((s) => s.published).slug;
+  const html = await (await fetch(`${base}/sites/${slug}`)).text();
+  assert.ok(html.includes('id="hx-chat-panel" hidden'), 'panel starts closed (bubble only)');
+  assert.ok(html.includes(`hx-chat-open-${slug}`), 'open/closed persisted per site slug');
+});
+
+test('spec/part1: openai model discovery falls back to first listed (Claude-listing gateways)', async () => {
+  const { pickModel } = await import('../server/ai.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ data: [{ id: 'claude-sonnet-5-relay' }] }), { status: 200 });
+  try {
+    const m = await pickModel({ provider: 'openai', apiKey: 'k', baseUrl: 'https://gw.example' });
+    assert.equal(m, 'claude-sonnet-5-relay', 'gateway listing only Claude models still resolves');
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

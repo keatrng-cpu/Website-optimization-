@@ -58,7 +58,13 @@ export function buildTools() {
       input_schema: { type: 'object', properties: { name: { type: 'string' }, palette: { type: 'string' } }, required: ['name'] },
       async run(ctx, { name, palette }) {
         const s = ctx.store.state;
-        let slug = slugify(name);
+        // idempotent: a site with this name/slug already exists → reuse, don't duplicate
+        const wanted = slugify(name);
+        const existing = s.sites.find((x) => x.slug === wanted || x.name.toLowerCase() === String(name).toLowerCase());
+        if (existing) {
+          return { site: existing.name, slug: existing.slug, url: `/sites/${existing.slug}`, existing: true };
+        }
+        let slug = wanted;
         while (s.sites.some((x) => x.slug === slug)) slug += '-' + uid().slice(0, 4);
         const site = { id: uid(), name: String(name), slug, palette: PALETTES[palette] ? palette : 'midnight', sections: defaultSections(s.brain), published: true, createdAt: Date.now(), updatedAt: Date.now() };
         s.sites.unshift(site);
@@ -197,8 +203,17 @@ export async function runPlanner(ctx, { goal }) {
     plan.push(['create_task', { title: goal.slice(0, 80) || 'Follow up on this goal', helperId: 'vizzy', priority: 'medium' }]);
   }
 
+  // dedupe identical steps within a run (e.g. two branches both adding an audit)
+  const seen = new Set();
+  const deduped = plan.filter(([tool, args]) => {
+    const key = tool + JSON.stringify(args);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
   const steps = [];
-  for (const [tool, args] of plan) {
+  for (const [tool, args] of deduped) {
     let result;
     try { result = await executeTool(ctx, tool, args); }
     catch (e) { result = { error: e.message }; }

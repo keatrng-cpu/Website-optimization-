@@ -44,6 +44,7 @@ function patchedApp() {
 
 const glue = `
 // ---------- demo glue: fetch shim + link handling ----------
+window.HELIX_DEMO = true;
 const _fetch = window.fetch.bind(window);
 window.fetch = async (input, opts = {}) => {
   const url = typeof input === 'string' ? input : input.url;

@@ -282,6 +282,8 @@ export function createApp({ dataDir } = {}) {
       sections: defaultSections(S().brain),
       published: true, createdAt: Date.now(), updatedAt: Date.now(),
     };
+    // born-score: audit the freshly rendered page with our own auditor
+    site.birthScore = auditHTML(renderSite(site, S().brain), `Studio site: ${site.name}`).score;
     S().sites.unshift(site);
     store.save();
     sendJSON(res, 201, site);
@@ -322,6 +324,7 @@ export function createApp({ dataDir } = {}) {
       site.sections = defaultSections(S().brain);
     }
     site.updatedAt = Date.now();
+    site.birthScore = auditHTML(renderSite(site, S().brain), `Studio site: ${site.name}`).score;
     store.save();
     sendJSON(res, 200, site);
   });
@@ -479,7 +482,25 @@ export function createApp({ dataDir } = {}) {
     } else if (url) {
       if (!/^https?:\/\//i.test(url)) return bad(res, 'url must start with http(s)://');
       try { report = await fetchAndAudit(url); }
-      catch (e) { return sendJSON(res, 502, { error: `could not fetch ${url}: ${e.message}` }); }
+      catch (e) {
+        // direct fetch failed — try the user's gateway audit relay if configured
+        const st = S().settings;
+        if (st.provider === 'openai' && st.baseUrl && st.apiKey) {
+          try {
+            const r = await fetch(`${st.baseUrl.replace(/\/$/, '')}/helix/audit?url=${encodeURIComponent(url)}`, {
+              headers: { authorization: `Bearer ${st.apiKey}` },
+              signal: AbortSignal.timeout(20_000),
+            });
+            if (r.ok) {
+              const rep = await r.json();
+              if (rep && typeof rep.score === 'number' && Array.isArray(rep.checks)) {
+                report = { target: url, createdAt: Date.now(), ...rep };
+              }
+            }
+          } catch { /* fall through to 502 */ }
+        }
+        if (!report) return sendJSON(res, 502, { error: `could not fetch ${url}: ${e.message}` });
+      }
     } else return bad(res, 'provide url or siteId');
     report.id = uid();
     S().seoAudits.unshift(report);
@@ -643,8 +664,10 @@ export function createApp({ dataDir } = {}) {
         const site = S().sites.find((s) => s.slug === slug);
         if (!site || !site.published) { res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('<h1>Site not found</h1>'); return; }
         recordView(store, slug, pathname);
+        const proto = req.headers['x-forwarded-proto'] || 'http';
+        const canonical = req.headers.host ? `${proto}://${req.headers.host}/sites/${slug}` : undefined;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSite(site, S().brain));
+        res.end(renderSite(site, S().brain, { canonical }));
         return;
       }
 

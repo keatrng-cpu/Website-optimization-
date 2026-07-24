@@ -1,6 +1,9 @@
 /* HELIX SPA — vanilla JS, hash router, zero dependencies. */
 'use strict';
 
+// Set by the single-file demo build; false in the installable app.
+const DEMO_MODE = typeof window !== 'undefined' && !!window.HELIX_DEMO;
+
 // ---------- utilities ----------
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = (s) => String(s ?? '')
@@ -94,6 +97,26 @@ function md(text) {
     .replace(/`([^`\n]+)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   return `<div class="md">${html}</div>`;
+}
+
+// Empty-Brain guard: Brain-dependent actions nudge toward setup first.
+// Resolves true to proceed (Brain is set, or "continue anyway"), false to stop.
+async function brainGuard(actionLabel) {
+  let brain;
+  try { ({ brain } = await api('GET', '/api/brain')); } catch { return true; }
+  if (brain.businessName) return true;
+  return new Promise((resolve) => {
+    const m = modal(`
+      <h2>🧠 Teach the Brain first?</h2>
+      <p class="dim" style="margin-top:6px">${esc(actionLabel)} works best when your team knows your business.
+      Filling in the Brain takes about 2 minutes — or continue with placeholder content.</p>
+      <div class="actions">
+        <button class="btn ghost" id="bgCont">Continue anyway</button>
+        <button class="btn" id="bgGo">🧠 Set up Brain</button>
+      </div>`);
+    $('#bgGo', m).onclick = () => { m.remove(); location.hash = '#/brain'; resolve(false); };
+    $('#bgCont', m).onclick = () => { m.remove(); resolve(true); };
+  });
 }
 
 function modal(inner, { wide = false } = {}) {
@@ -550,6 +573,7 @@ routes.powerups = async (main) => {
       const inputs = {};
       m.querySelectorAll('[data-key]').forEach((i) => { inputs[i.dataset.key] = i.value; });
       const btn = $('#puRun', m);
+      if (!(await brainGuard(p.name))) { m.remove(); return; }
       btn.disabled = true; btn.textContent = '⏳ Generating…';
       try {
         const doc = await api('POST', `/api/powerups/${id}/run`, { inputs });
@@ -702,11 +726,13 @@ routes.sites = async (main, [siteId]) => {
     $('#sCancel', m).onclick = () => m.remove();
     $('#sSave', m).onclick = async () => {
       const btn = $('#sSave', m);
+      if (!(await brainGuard('Website generation'))) { m.remove(); return; }
       btn.disabled = true; btn.textContent = '⏳ Building…';
       try {
         const site = await api('POST', '/api/sites', { name: $('#sName', m).value, palette: $('#sPalette', m).value });
-        await api('POST', `/api/sites/${site.id}/generate`);
-        m.remove(); toast('Website is live 🎉');
+        const gen = await api('POST', `/api/sites/${site.id}/generate`);
+        m.remove();
+        toast(gen.birthScore ? `Website is live 🎉 Born at ${gen.birthScore}/100 on the SEO auditor` : 'Website is live 🎉');
         location.hash = `#/sites/${site.id}`;
       } catch (err) { btn.disabled = false; btn.textContent = 'Create & generate'; toast(err.message, true); }
     };
@@ -725,6 +751,7 @@ async function siteEditor(main, siteId) {
     features: ['title'],
     about: ['title', 'text'],
     testimonials: ['title'],
+    faq: ['title'],
     cta: ['headline', 'sub', 'cta', 'ctaLink'],
     contact: ['title', 'email', 'phone', 'address'],
   };
@@ -996,6 +1023,9 @@ routes.settings = async (main) => {
         <input name="model" value="${esc(s.model)}" placeholder="claude-sonnet-5 / gpt-4o-mini / llama3.2">
         <label>Base URL (optional)</label>
         <input name="baseUrl" value="${esc(s.baseUrl)}" placeholder="e.g. http://localhost:11434 for Ollama">
+        <p class="dim" style="margin-top:6px">Works with any OpenAI-compatible endpoint — including a personal
+        server-side gateway/relay, which keeps real keys off this device and can also power
+        CORS-free URL audits in SEO.</p>
         <div style="margin-top:16px"><button class="btn">Save settings</button></div>
         <p class="dim" style="margin-top:12px">Your key is stored only in the local <code>data/db.json</code> on this machine and is never echoed back to the browser.</p>
       </form>
@@ -1217,8 +1247,11 @@ routes.autopilot = async (main) => {
     return '';
   };
 
+  let running = false; // one run at a time — a double-tap must not fire twice
   async function run(goal) {
-    if (!goal.trim()) return;
+    if (!goal.trim() || running) return;
+    if (!(await brainGuard('Autopilot'))) return;
+    running = true;
     $('#go', main).disabled = true; $('#go', main).textContent = '⏳ Working…';
     out.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Autopilot is working on “${esc(goal)}”…</b></div></div>`;
     try {
@@ -1242,6 +1275,7 @@ routes.autopilot = async (main) => {
     } catch (e) {
       out.innerHTML = `<div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div>`;
     } finally {
+      running = false;
       $('#go', main).disabled = false; $('#go', main).textContent = '🚀 Run Autopilot';
     }
   }
@@ -1291,10 +1325,26 @@ routes.integrations = async (main) => {
         </div>`).join('')}
     </div>` : ''}
 
+    ${DEMO_MODE ? `
+    <div class="card" style="margin-bottom:16px;border-color:var(--yellow)">
+      <b>🔒 Connecting is disabled in this browser demo — by design.</b>
+      <p class="dim" style="margin-top:6px">Two honest reasons: most of these APIs block direct browser calls (CORS),
+      and pasting secret keys into a web page is an anti-pattern we won't teach. In the
+      <b>installable app</b>, keys live in a local file on your machine and calls run server-side,
+      so every connection below works for real. Services gain browser support here as
+      server-side relays are added (the same pattern as the AI gateway in Settings).</p>
+    </div>` : ''}
     <h2 style="font-size:15px;margin:6px 0 4px">Add a connection</h2>
-    <p class="dim" style="margin-bottom:14px">Pick a service to pre-fill the details, then paste your key.</p>
+    <p class="dim" style="margin-bottom:14px">${DEMO_MODE ? 'Available in the installable app — browse the catalog below.' : 'Pick a service to pre-fill the details, then paste your key.'}</p>
     <div class="grid c3">
-      ${presets.map((p) => `
+      ${presets.map((p) => DEMO_MODE ? `
+        <div class="card func-card" style="text-align:left;opacity:.75">
+          <div class="row" style="gap:10px;align-items:flex-start">
+            <span class="learn-ic">${p.icon}</span>
+            <span><b>${esc(p.name)}</b><p class="muted" style="margin-top:3px">${esc(p.desc)}</p></span>
+          </div>
+          <span class="badge warn">installable app / server relay</span>
+        </div>` : `
         <button class="card func-card" data-preset="${p.id}" style="text-align:left;cursor:pointer">
           <div class="row" style="gap:10px;align-items:flex-start">
             <span class="learn-ic">${p.icon}</span>

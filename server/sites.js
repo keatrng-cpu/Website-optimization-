@@ -16,25 +16,74 @@ export function slugify(name) {
 
 export function defaultSections(brain) {
   const name = brain.businessName || 'Your Business';
+  const aud = brain.audience || 'the people we serve';
+  const prod = brain.products || 'our products and services';
+  const about = [
+    brain.description || `${name} exists to make life simpler for ${aud}.`,
+    `We focus on ${prod}, delivered with care, clear communication, and attention to the details that matter.`,
+    brain.goals ? `Right now our focus is simple: ${brain.goals}.` : 'Our promise is simple: do excellent work, communicate clearly, and treat every customer like our most important one.',
+    brain.location ? `We're proudly based in ${brain.location} and love working with our community.` : 'Wherever you are, we make working together easy from the very first conversation.',
+  ].join(' ');
   return [
-    { type: 'hero', headline: brain.tagline || `Welcome to ${name}`, sub: brain.description || 'We help you get results, faster.', cta: 'Get started', ctaLink: '#contact' },
+    { type: 'hero', headline: brain.tagline || `Welcome to ${name}`, sub: brain.description || `We help ${aud} get real results, faster — with ${prod} built around your needs.`, cta: 'Get started', ctaLink: '#contact' },
     {
       type: 'features', title: 'Why choose us', items: [
-        { icon: '⚡', title: 'Fast', text: 'Results in days, not months.' },
-        { icon: '🎯', title: 'Focused', text: 'Built around exactly what you need.' },
-        { icon: '🤝', title: 'Personal', text: 'Real support from real people.' },
+        { icon: '⚡', title: 'Fast', text: `Results in days, not months — we move at the speed ${aud} actually need.` },
+        { icon: '🎯', title: 'Focused', text: `Everything we offer is built around exactly what you need, nothing you don't.` },
+        { icon: '🤝', title: 'Personal', text: 'Real support from real people who know your name and pick up the phone.' },
       ],
     },
-    { type: 'about', title: `About ${name}`, text: brain.description || 'Tell your story here — who you are, who you serve, and why it matters.' },
+    { type: 'about', title: `About ${name}`, text: about },
     {
       type: 'testimonials', title: 'What customers say', items: [
-        { quote: 'Exactly what we needed — professional and fast.', author: 'A happy customer' },
-        { quote: 'The results speak for themselves.', author: 'A repeat client' },
+        { quote: 'Exactly what we needed — professional, fast, and genuinely easy to work with.', author: 'A happy customer' },
+        { quote: 'The results speak for themselves. We came back, and we tell our friends.', author: 'A repeat client' },
       ],
     },
-    { type: 'cta', headline: 'Ready to get started?', sub: 'Reach out today — it takes two minutes.', cta: 'Contact us', ctaLink: '#contact' },
+    {
+      type: 'faq', title: 'Frequently asked questions', items: [
+        { q: `What does ${name} actually do?`, a: brain.description || `We provide ${prod} for ${aud}. In short: we take a real problem off your plate and handle it properly, end to end.` },
+        { q: 'Who do you work with?', a: `Primarily ${aud} — but if you're not sure you fit, just ask. A quick conversation costs nothing and we'll point you in the right direction either way.` },
+        { q: 'How do I get started?', a: 'Use the contact section below to reach out. We respond quickly, ask a few questions to understand what you need, and give you a clear next step — no pressure, no jargon.' },
+        { q: 'What makes you different?', a: brain.tone ? `Our style is ${brain.tone} — and we back it with careful work, honest communication, and follow-through you can rely on.` : 'Care and follow-through. We do what we say, when we said we would, and keep you informed the whole way.' },
+        { q: 'What if I have more questions?', a: 'Ask away — the chat on this page can answer right now, or send a message via the contact section and a real person will get back to you.' },
+      ],
+    },
+    { type: 'cta', headline: 'Ready to get started?', sub: 'Reach out today — it takes two minutes and there is no obligation.', cta: 'Contact us', ctaLink: '#contact' },
     { type: 'contact', title: 'Contact', email: '', phone: '', address: brain.location || '' },
   ];
+}
+
+// Deterministic <title>: always 15–60 chars, "{Business} — {tagline}" pattern.
+export function composeTitle(site, brain) {
+  const name = site.name || brain.businessName || 'Welcome';
+  let t = brain.tagline ? `${name} — ${brain.tagline}` : name;
+  if (t.length < 15) t = `${t} — ${brain.industry || 'Official Site'}`;
+  if (t.length < 15) t = `${t} | Quality & Care`;
+  if (t.length > 60) {
+    const cut = t.slice(0, 60).lastIndexOf(' ');
+    t = t.slice(0, cut > 40 ? cut : 60).trim();
+  }
+  return t;
+}
+
+// Deterministic meta description: always 140–158 chars, composed from Brain.
+export function composeMeta(site, brain) {
+  const name = brain.businessName || site.name;
+  const parts = [];
+  if (brain.description) parts.push(brain.description.trim());
+  if (brain.products) parts.push(`Offering ${brain.products.trim()}.`);
+  if (brain.audience) parts.push(`Built for ${brain.audience.trim()}.`);
+  if (brain.location) parts.push(`Based in ${brain.location.trim()}.`);
+  parts.push(`Get in touch with ${name} today.`);
+  let m = parts.join(' ').replace(/\s+/g, ' ').trim();
+  if (m.length < 140) m += ` Fast, friendly, and focused on results — discover what ${name} can do for you.`;
+  if (m.length < 140) m += ' Quality service, clear communication, and care in every detail.';
+  if (m.length > 158) {
+    const cut = m.slice(0, 158).lastIndexOf(' ');
+    m = m.slice(0, cut > 140 ? cut : 158).trim();
+  }
+  return m;
 }
 
 const esc = (s) => String(s ?? '')
@@ -73,6 +122,11 @@ const RENDERERS = {
     <p>${esc(s.sub)}</p>
     ${s.cta ? `<a class="btn" href="${esc(s.ctaLink || '#contact')}">${esc(s.cta)}</a>` : ''}
   </section>`,
+  faq: (s) => `
+  <section class="faq">
+    <h2>${esc(s.title)}</h2>
+    ${(s.items || []).map((i) => `<details><summary>${esc(i.q)}</summary><p>${esc(i.a)}</p></details>`).join('')}
+  </section>`,
   contact: (s) => `
   <section class="contact" id="contact">
     <h2>${esc(s.title)}</h2>
@@ -87,7 +141,7 @@ const RENDERERS = {
 // A floating Claude-powered chat widget. `endpoint` is where it POSTs
 // {messages:[{role,content}]} and expects {reply}. Palette-matched, and it
 // degrades to a friendly message if the endpoint is unreachable.
-export function chatWidget(name, endpoint) {
+export function chatWidget(name, endpoint, slug = '') {
   const greeting = `Hi! I'm the assistant for ${name}. Ask me anything.`;
   return `
 <div id="hx-chat">
@@ -118,9 +172,12 @@ export function chatWidget(name, endpoint) {
   var msgs=[{role:'assistant',content:${JSON.stringify(greeting)}}];
   var panel=document.getElementById('hx-chat-panel'),box=document.getElementById('hx-chat-msgs');
   var btn=document.getElementById('hx-chat-btn'),form=document.getElementById('hx-chat-form'),input=document.getElementById('hx-chat-in');
+  var KEY=${JSON.stringify('hx-chat-open-' + (slug || 'site'))};
   function render(){box.innerHTML=msgs.map(function(m){return '<div class="hx-m '+(m.role==='user'?'user':'bot')+'">'+m.content.replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})+'</div>';}).join('');box.scrollTop=box.scrollHeight;}
-  function toggle(open){panel.hidden=!open;if(open){render();input.focus();}}
+  // Starts CLOSED (bubble only); remembers the visitor's choice per site.
+  function toggle(open){panel.hidden=!open;try{localStorage.setItem(KEY,open?'1':'0');}catch(e){}if(open){render();input.focus();}}
   btn.onclick=function(){toggle(panel.hidden);};
+  try{if(localStorage.getItem(KEY)==='1'){panel.hidden=false;render();}}catch(e){}
   document.getElementById('hx-chat-close').onclick=function(){toggle(false);};
   form.onsubmit=function(e){
     e.preventDefault();var t=input.value.trim();if(!t)return;input.value='';
@@ -138,11 +195,12 @@ export function chatWidget(name, endpoint) {
 export function renderSite(site, brain, opts = {}) {
   const p = PALETTES[site.palette] || PALETTES.midnight;
   const name = brain.businessName || site.name;
-  const title = `${site.name}${brain.tagline ? ' — ' + brain.tagline : ''}`.slice(0, 60);
-  const desc = (brain.description || `${name}: ${brain.tagline || 'quality you can trust.'}`).slice(0, 158);
+  const title = composeTitle(site, brain);
+  const desc = composeMeta(site, brain);
+  const canonical = opts.canonical || `/sites/${site.slug}`;
   const body = (site.sections || []).map((s) => (RENDERERS[s.type] || (() => ''))(s)).join('\n');
   const chatOn = opts.chat !== false && site.chatEnabled !== false;
-  const widget = chatOn ? chatWidget(name, opts.chatEndpoint || `/api/sites/${site.slug}/chat`) : '';
+  const widget = chatOn ? chatWidget(name, opts.chatEndpoint || `/api/sites/${site.slug}/chat`, site.slug) : '';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -150,6 +208,7 @@ export function renderSite(site, brain, opts = {}) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
+<link rel="canonical" href="${esc(canonical)}">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:type" content="website">
@@ -174,6 +233,9 @@ export function renderSite(site, brain, opts = {}) {
   figcaption{color:var(--muted);font-size:.9rem}
   .cta-band{text-align:center;background:var(--surface);border-radius:24px;padding:56px 32px;margin:32px 0}
   .cta-band p{margin:12px 0 28px}
+  .faq details{background:var(--surface);border-radius:12px;padding:14px 18px;margin-bottom:10px}
+  .faq summary{cursor:pointer;font-weight:600}
+  .faq p{margin-top:8px}
   .contact ul{list-style:none}
   .contact li{margin:8px 0}
   .contact a{color:var(--accent)}
