@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HELIX — Your AI Business Team. Free to run, built to ship.</title>
+<meta name="description" content="HELIX gives you 12 AI teammates that plan, write, build and market your website — running privately on your device for free. Upgrade for managed AI, hosting and automation relays.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬢</text></svg>">
+<style>
+  :root{--bg:#0a0d16;--bg2:#10141f;--panel:#141928;--border:#232b42;--text:#e9edf7;--muted:#93a0bf;--dim:#5b6786;--accent:#6c8cff;--accent2:#9b6cff;--good:#22c55e;--warn:#f5b842}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+  header{position:sticky;top:0;z-index:10;background:rgba(10,13,22,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+  header .wrap{display:flex;align-items:center;justify-content:space-between;padding:14px 20px}
+  .brand{font-weight:800;font-size:18px;letter-spacing:.5px}
+  .brand span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  nav a{color:var(--muted);margin-left:22px;font-size:14px;font-weight:600}
+  nav a:hover{color:var(--text)}
+  nav a.cta{color:#fff;background:linear-gradient(90deg,#5a7bff,#8a5cff);padding:8px 16px;border-radius:10px}
+  .hero{padding:88px 0 64px;text-align:center;background:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(108,140,255,.14),transparent)}
+  .hero h1{font-size:clamp(32px,5.5vw,54px);line-height:1.12;font-weight:800;letter-spacing:-.5px}
+  .hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{max-width:640px;margin:20px auto 0;color:var(--muted);font-size:17px}
+  .hero .btns{margin-top:34px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:13px 26px;border-radius:12px;font-weight:700;font-size:15px;border:1px solid var(--border)}
+  .btn.primary{color:#fff;background:linear-gradient(90deg,#5a7bff,#8a5cff);border:none;box-shadow:0 8px 30px rgba(108,140,255,.28)}
+  .btn.ghost{color:var(--text);background:var(--panel)}
+  .btn:hover{filter:brightness(1.1)}
+  .trust{margin-top:26px;color:var(--dim);font-size:13px}
+  section{padding:64px 0}
+  h2{font-size:clamp(24px,3.5vw,34px);font-weight:800;text-align:center;letter-spacing:-.3px}
+  .sub{color:var(--muted);text-align:center;max-width:620px;margin:12px auto 0}
+  .grid{display:grid;gap:16px;margin-top:40px}
+  .grid.cols3{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px}
+  .card .ic{font-size:26px}
+  .card h3{margin:10px 0 6px;font-size:16px}
+  .card p{color:var(--muted);font-size:14px}
+  .steps{counter-reset:s;max-width:680px;margin:40px auto 0;display:grid;gap:14px}
+  .step{display:flex;gap:16px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+  .step:before{counter-increment:s;content:counter(s);flex:none;width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#5a7bff,#8a5cff);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .step b{display:block}
+  .step span{color:var(--muted);font-size:14px}
+  .plans{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:44px;align-items:stretch}
+  .plan{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:28px;display:flex;flex-direction:column;position:relative}
+  .plan.featured{border-color:#5a7bff;box-shadow:0 10px 44px rgba(108,140,255,.18)}
+  .plan .tag{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(90deg,#5a7bff,#8a5cff);color:#fff;font-size:12px;font-weight:700;padding:4px 14px;border-radius:999px;white-space:nowrap}
+  .plan h3{font-size:17px}
+  .price{margin:14px 0 2px;font-size:38px;font-weight:800}
+  .price small{font-size:14px;color:var(--muted);font-weight:600}
+  .founding{color:var(--warn);font-size:13px;font-weight:700;margin-bottom:8px}
+  .plan ul{list-style:none;margin:18px 0 24px;display:grid;gap:9px;flex:1}
+  .plan li{color:var(--muted);font-size:14px;padding-left:24px;position:relative}
+  .plan li:before{content:"✓";position:absolute;left:0;color:var(--good);font-weight:700}
+  .plan li.na{opacity:.45}.plan li.na:before{content:"—";color:var(--dim)}
+  .plan .btn{text-align:center}
+  .honesty{max-width:760px;margin:44px auto 0;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px 24px;color:var(--muted);font-size:14px}
+  .honesty b{color:var(--text)}
+  .faq{max-width:720px;margin:40px auto 0;display:grid;gap:10px}
+  details{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 20px}
+  summary{cursor:pointer;font-weight:700;font-size:15px}
+  details p{margin-top:10px;color:var(--muted);font-size:14px}
+  footer{border-top:1px solid var(--border);padding:36px 0;color:var(--dim);font-size:13px;text-align:center}
+  footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <div class="brand">⬢ <span>HELIX</span></div>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#pricing">Pricing</a>
+    <a class="cta" href="/app.html">Launch free app</a>
+  </nav>
+</div></header>
+
+<div class="hero"><div class="wrap">
+  <h1>Your AI business team.<br><em>Free to run. Built to ship.</em></h1>
+  <p>HELIX gives you 12 AI teammates that plan your week, write your content, build your website and run your marketing — with a Brain that remembers your business and gets sharper the more you use it.</p>
+  <div class="btns">
+    <a class="btn primary" href="/app.html">⬢ Launch the free app — no signup</a>
+    <a class="btn ghost" href="#pricing">See pricing</a>
+  </div>
+  <div class="trust">Runs privately in your browser · Your data never leaves your device on the free tier · No account required</div>
+</div></div>
+
+<section id="features"><div class="wrap">
+  <h2>Everything a one-person business needs</h2>
+  <p class="sub">Not a chatbot with a to-do list bolted on — an ecosystem where every teammate reads the same Brain and works toward the same goals.</p>
+  <div class="grid cols3">
+    <div class="card"><div class="ic">👥</div><h3>12 AI teammates</h3><p>Sales, support, e-commerce, data, email, growth, finance, copywriting, SEO, research, social and operations — each with real skills, not canned scripts.</p></div>
+    <div class="card"><div class="ic">🧠</div><h3>A Brain that learns</h3><p>HELIX extracts facts, preferences and goals from your chats, verifies them, and every teammate uses them automatically. You can see, pin or forget any memory — total transparency.</p></div>
+    <div class="card"><div class="ic">🚀</div><h3>Autopilot</h3><p>Describe an outcome and Autopilot plans the steps, builds the site, writes the content and schedules the follow-ups — showing its work at every step.</p></div>
+    <div class="card"><div class="ic">🌐</div><h3>Website Studio</h3><p>Every site is born SEO-complete — proper titles, meta, FAQ schema and 300+ words of real copy — scoring 95+ on the built-in auditor from the first click.</p></div>
+    <div class="card"><div class="ic">🔌</div><h3>Bring your own keys</h3><p>32 vetted integrations — social, email, research, analytics. Your API keys stay in your workspace, are never echoed back, and usage is metered by metadata only.</p></div>
+    <div class="card"><div class="ic">📦</div><h3>Own your output</h3><p>One-click export of your whole workspace, and any website as a deployable bundle with a serverless AI chat widget included. No lock-in, ever.</p></div>
+  </div>
+</div></section>
+
+<section id="how" style="background:var(--bg2)"><div class="wrap">
+  <h2>From idea to live business in four steps</h2>
+  <div class="steps">
+    <div class="step"><div><b>Tell the Brain about your business</b><span>One paragraph is enough — Quick Start turns a description into a workspace: Brain profile, website, starter content and an automation.</span></div></div>
+    <div class="step"><div><b>Let the team produce</b><span>Chat with any teammate or fire a Power-up: campaign plans, product pages, email sequences, SEO audits — every number computed, never invented.</span></div></div>
+    <div class="step"><div><b>Ship your website</b><span>Publish inside HELIX instantly, or export a deploy-ready bundle for any static host.</span></div></div>
+    <div class="step"><div><b>Automate the follow-through</b><span>Recurring content, weekly audits, social posting via your own connected accounts — HELIX keeps working when you're not.</span></div></div>
+  </div>
+</div></section>
+
+<section id="pricing"><div class="wrap">
+  <h2>Simple pricing, honest free tier</h2>
+  <p class="sub">The free app is the full product running on your device — not a crippled trial. Paid plans add the managed layer: our AI, our hosting, our relays.</p>
+  <div class="plans">
+    <div class="plan">
+      <h3>Free</h3>
+      <div class="price">$0<small> forever</small></div>
+      <ul>
+        <li>All 12 teammates &amp; the full offline engine</li>
+        <li>Brain memory &amp; learning</li>
+        <li>Website Studio + SEO auditor</li>
+        <li>Bring your own AI key (Claude, OpenAI-compatible, Ollama)</li>
+        <li>Full data export — no lock-in</li>
+        <li class="na">Managed AI (no API key needed)</li>
+        <li class="na">Hosted sites on your domain</li>
+      </ul>
+      <a class="btn ghost" href="/app.html">Launch free app</a>
+    </div>
+    <div class="plan featured">
+      <div class="tag">Most popular · Founding price</div>
+      <h3>Pro</h3>
+      <div class="price">$24<small>/month</small></div>
+      <div class="founding">⚡ $19/mo for founding members</div>
+      <ul>
+        <li>Everything in Free</li>
+        <li>Managed AI included — no API key setup</li>
+        <li>Hosted websites with custom domain</li>
+        <li>Live URL audits &amp; market data feeds</li>
+        <li>Priority feature access</li>
+      </ul>
+      <a class="btn primary" href="REPLACE_WITH_STRIPE_PRO_LINK">Get Pro</a>
+    </div>
+    <div class="plan">
+      <h3>Agency</h3>
+      <div class="price">$79<small>/month</small></div>
+      <ul>
+        <li>Everything in Pro</li>
+        <li>Unlimited client workspaces</li>
+        <li>White-label exports</li>
+        <li>Founder support channel</li>
+      </ul>
+      <a class="btn ghost" href="REPLACE_WITH_STRIPE_AGENCY_LINK">Get Agency</a>
+    </div>
+  </div>
+  <div class="honesty"><b>Our honesty policy:</b> HELIX never fabricates numbers — every stat in the app is computed from your real workspace, and anything sampled or estimated is labeled as such. Paid features listed here ship at launch; if something isn't live yet when you subscribe, we'll tell you before you pay, not after.</div>
+</div></section>
+
+<section style="background:var(--bg2)"><div class="wrap">
+  <h2>Questions, answered straight</h2>
+  <div class="faq">
+    <details><summary>Is the free tier actually useful?</summary><p>Yes — it's the entire app running in your browser with a deterministic offline engine. You can build and export a real website, generate content, and run the full Brain without paying anything or creating an account. Adding your own AI API key upgrades the writing quality; it's optional.</p></details>
+    <details><summary>Where does my data live?</summary><p>On the free tier, entirely on your device — we never see it. Integration API keys you add are stored in your workspace only, never echoed back to any client, and sent nowhere except the service you connected them to.</p></details>
+    <details><summary>What does Pro actually add?</summary><p>The managed layer: AI included (no key setup), hosted websites on your domain, and live external data (URL audits, market feeds). The core product is identical — Pro removes the setup work.</p></details>
+    <details><summary>Can I cancel or leave?</summary><p>Anytime. Export your whole workspace as JSON and every website as a deploy-ready bundle. HELIX is built to have zero lock-in.</p></details>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  ⬢ HELIX — your AI business team. · <a href="/app.html">Launch the free app</a><br>
+  Built with a zero-dependency engine · 47 automated tests behind every release
+</div></footer>
+
+</body>
+</html>
