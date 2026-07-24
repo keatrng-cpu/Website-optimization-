@@ -111,11 +111,13 @@ const js = [
   port('server/agent.js'),
   port('server/memory.js'),
   port('server/quickstart.js'),
+  port('server/stats.js'),
   port('server/zip.js'),
   port('server/export-site.js'),
   read('demo/browser-backend.js'),
   '})();',
   glue,
+  read('public/ticker.js'),
   patchedApp(),
 ].join('\n\n');
 
@@ -143,6 +145,7 @@ ${banner}
   <button id="menuBtn" aria-label="Open menu">☰</button>
   <span class="brand">⬢ HELIX</span>
 </div>
+<div id="helix-ticker"></div>
 <div id="app">
   <aside class="sidebar" id="sidebar"></aside>
   <div id="backdrop"></div>

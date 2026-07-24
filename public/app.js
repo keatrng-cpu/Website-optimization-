@@ -157,6 +157,7 @@ function navigate() {
     if (!root.isConnected) return; // superseded by a newer navigation
     root.innerHTML = `<div class="page"><div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div></div>`;
   });
+  refreshTickerStats(); // keep the header marquee in step with the workspace
 }
 window.addEventListener('hashchange', navigate);
 
@@ -1547,7 +1548,34 @@ routes.integrations = async (main) => {
   });
 };
 
+// ---------- header ticker ----------
+const tickerBiz = []; // shared by reference with the component; mutate + refresh
+let tickerRef = null;
+async function mountTicker() {
+  if (typeof HelixTicker === 'undefined' || !$('#helix-ticker')) return;
+  try { tickerBiz.push(...await api('GET', '/api/stats/ticker')); } catch { /* stats optional */ }
+  tickerRef = HelixTicker.mount('#helix-ticker', {
+    marketsUrl: '/api/stats/markets', // key-safe proxy; badge shows SAMPLE until live
+    refreshMs: 120000,
+    businessStats: tickerBiz,
+    aiSuggest: () => api('POST', '/api/stats/ticker/suggest'),
+  });
+}
+let tickerTimer = null;
+function refreshTickerStats() {
+  if (!tickerRef) return;
+  clearTimeout(tickerTimer);
+  tickerTimer = setTimeout(async () => {
+    try {
+      const fresh = await api('GET', '/api/stats/ticker');
+      tickerBiz.length = 0;
+      tickerBiz.push(...fresh);
+      tickerRef.refresh();
+    } catch { /* keep last values */ }
+  }, 700);
+}
+
 // ---------- boot ----------
-loadBoot().then(navigate).catch((e) => {
+loadBoot().then(() => { navigate(); mountTicker(); }).catch((e) => {
   $('#main').innerHTML = `<div class="page"><div class="empty">Could not reach the HELIX server: ${esc(e.message)}</div></div>`;
 });

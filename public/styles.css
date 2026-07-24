@@ -316,3 +316,45 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
   .chat-panel { height: 62vh; min-height: 380px; }
   .kanban { grid-template-columns: 1fr; }
 }
+
+/* ---------- HELIX Ticker (header stats marquee) ---------- */
+#helix-ticker { flex: none; padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+#helix-ticker:empty { display: none; }
+/* ============ HELIX TICKER COMPONENT (self-contained: lift everything between the markers) ============ */
+  .hx-ticker{position:relative;background:#0f1420;border:1px solid #232b3d;border-radius:12px;overflow:hidden;
+    display:flex;align-items:stretch;font-size:.88rem;user-select:none}
+  .hx-ticker .hx-live{flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;background:#121a2c;
+    border-right:1px solid #232b3d;font-size:.68rem;font-weight:800;letter-spacing:.08em;color:#39d98a;white-space:nowrap}
+  .hx-ticker .hx-live.demo{color:#e8b64c}
+  .hx-ticker .hx-live .dot{width:7px;height:7px;border-radius:50%;background:currentColor;animation:hxPulse 1.6s infinite}
+  @keyframes hxPulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .hx-viewport{flex:1;overflow:hidden;position:relative}
+  .hx-track{display:flex;align-items:center;height:100%;width:max-content;will-change:transform;
+    animation:hxScroll var(--hx-dur,40s) linear infinite}
+  @keyframes hxScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .hx-viewport:hover .hx-track,.hx-track.hx-hold{animation-play-state:paused}
+  .hx-stat{display:flex;align-items:baseline;gap:7px;padding:11px 18px;white-space:nowrap;cursor:default;
+    border-right:1px solid #1b2334;transition:background .15s}
+  .hx-stat:hover{background:#161f33}
+  .hx-stat .k{color:#8b96a5;font-weight:600}
+  .hx-stat .v{font-weight:800;font-variant-numeric:tabular-nums}
+  .hx-stat .d{font-weight:700;font-size:.8rem;font-variant-numeric:tabular-nums}
+  .hx-up{color:#39d98a}.hx-down{color:#ff6b5e}.hx-flat{color:#8b96a5}
+  .hx-gear{flex:none;display:flex;align-items:center;padding:0 11px;background:#121a2c;border-left:1px solid #232b3d;
+    cursor:pointer;color:#8b96a5;font-size:1rem}
+  .hx-gear:hover{color:#e6edf3}
+  .hx-menu{position:absolute;right:6px;top:calc(100% + 8px);z-index:50;background:#131a2a;border:1px solid #2a3550;
+    border-radius:12px;padding:12px;min-width:270px;box-shadow:0 16px 48px rgba(0,0,0,.55);display:none}
+  .hx-menu.open{display:block}
+  .hx-menu h4{margin:0 0 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#8b96a5}
+  .hx-menu label{display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:.86rem;cursor:pointer}
+  .hx-menu .sect{border-top:1px solid #232b3d;margin-top:9px;padding-top:9px}
+  .hx-menu input[type=text]{width:100%;background:#0f1420;border:1px solid #232b3d;color:#e6edf3;border-radius:8px;
+    padding:7px 9px;font-size:.85rem;margin-top:5px;box-sizing:border-box}
+  .hx-menu .row2{display:flex;gap:6px;margin-top:6px}
+  .hx-menu button{background:#2d3f66;border:none;color:#e6edf3;border-radius:8px;padding:7px 11px;font-size:.8rem;
+    font-weight:700;cursor:pointer;flex:1}
+  .hx-menu button.hx-ai{background:linear-gradient(90deg,#6a5cff,#b45cff)}
+  .hx-menu .hint{font-size:.72rem;color:#8b96a5;margin-top:7px;line-height:1.45}
+  .hx-menu .rm{color:#ff6b5e;cursor:pointer;margin-left:auto;font-size:.8rem}
+  /* ============ /HELIX TICKER COMPONENT ============ */

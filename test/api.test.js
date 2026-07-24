@@ -539,16 +539,16 @@ test('agent: provider loop orchestrates tool calls (stub model)', async () => {
 
 test('forge hardening: input hygiene strips control chars and caps length', async () => {
   const { clean } = await import('../server/helpers.js');
-  assert.equal(clean('a bc'), 'abc', 'control chars removed');
+  assert.equal(clean('a\u0000b\u0007c'), 'abc', 'control chars removed');
   assert.equal(clean('line1\nline2\ttab'), 'line1\nline2\ttab', 'newline and tab preserved');
   assert.equal(clean('x'.repeat(50), 10).length, 10, 'length capped');
   assert.equal(clean(null), '');
 
   // applied end-to-end: a chat message with a null byte is stored clean
   const chat = await api('POST', '/api/chats', { helperId: 'penn' });
-  await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'hello  world' });
+  await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'hello\u0000 world' });
   const full = await api('GET', `/api/chats/${chat.data.id}`);
-  assert.ok(!full.data.messages[0].content.includes(' '), 'stored message is sanitized');
+  assert.ok(!full.data.messages[0].content.includes('\u0000'), 'stored message is sanitized');
   await api('DELETE', `/api/chats/${chat.data.id}`);
 });
 
@@ -906,6 +906,42 @@ test('usage tracking: POST-style connection tests send the configured body', asy
   assert.equal(JSON.parse(seen.body).ping, 1, 'test sent the configured body');
   await api('DELETE', `/api/integrations/${integ.data.id}`);
   await new Promise((r) => mock.close(r));
+});
+
+test('ticker: business stats are code-computed with real 7d pageview math', async () => {
+  const { buildTickerStats, parseLabelLines } = await import('../server/stats.js');
+  const day = (o) => new Date(Date.now() - o * 86_400_000).toISOString().slice(0, 10);
+  const state = {
+    tasks: [{ status: 'todo' }, { status: 'done' }, { status: 'doing' }],
+    documents: [{}, {}], sites: [{ published: true }, { published: false }],
+    analytics: [
+      { day: day(1), count: 30 }, { day: day(2), count: 30 },   // last 7d = 60
+      { day: day(8), count: 25 }, { day: day(9), count: 25 },   // prior 7d = 50
+    ],
+    seoAudits: [{ score: 97 }], memories: [{}],
+  };
+  const stats = buildTickerStats(state);
+  const get = (id) => stats.find((s) => s.id === id);
+  assert.equal(get('tasks').value, 2);
+  assert.equal(get('docs').value, 2);
+  assert.equal(get('sites').value, 1, 'only published sites count');
+  assert.equal(get('views').value, 60);
+  assert.equal(get('views').changePct, 20, '(60-50)/50 = +20%');
+  assert.equal(get('seo').value, 97);
+
+  // AI names stats; it never supplies values
+  const parsed = parseLabelLines('LABEL: Weekly signups\nnoise line\nLABEL: Repeat customers\nLABEL: a\nLABEL: b\nLABEL: c\nLABEL: d');
+  assert.equal(parsed.length, 5, 'capped at 5');
+  assert.ok(parsed.every((p) => p.value === '—'), 'no invented values');
+  assert.equal(parsed[0].label, 'Weekly signups');
+
+  // routes: ticker shape, markets honest ok:false without a gateway, suggest silent without a provider
+  const live = await api('GET', '/api/stats/ticker');
+  assert.ok(live.data.find((s) => s.id === 'tasks'));
+  const mkts = await api('GET', '/api/stats/markets');
+  assert.equal(mkts.data.ok, false, 'no gateway configured → honest ok:false');
+  const sug = await api('POST', '/api/stats/ticker/suggest', {});
+  assert.deepEqual(sug.data, [], 'no provider → no suggestions');
 });
 
 test('spa: serves index.html at / and as fallback', async () => {

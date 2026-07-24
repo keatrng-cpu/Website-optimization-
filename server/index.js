@@ -18,6 +18,7 @@ import { buildExport } from './export-site.js';
 import { runQuickstart } from './quickstart.js';
 import { learnFromMessage, recordFeedback, aiLearn, MEMORY_PROPOSAL_SYSTEM } from './memory.js';
 import { aiPropose } from './ai.js';
+import { buildTickerStats, parseLabelLines, TICKER_SUGGEST_SYSTEM } from './stats.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -615,6 +616,30 @@ export function createApp({ dataDir } = {}) {
     sendJSON(res, 200, { integration: redactIntegration(integ), result });
   });
   router.get('/api/integrations/usage', (req, res) => sendJSON(res, 200, usageSummary(S())));
+
+  // ---------- header ticker ----------
+  router.get('/api/stats/ticker', (req, res) => sendJSON(res, 200, buildTickerStats(S())));
+  // Key-safe markets proxy: the gateway key never reaches the browser.
+  router.get('/api/stats/markets', async (req, res) => {
+    const st = S().settings;
+    if (!(st.provider === 'openai' && st.baseUrl && st.apiKey)) return sendJSON(res, 200, { ok: false });
+    try {
+      const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/helix/markets', {
+        headers: { authorization: `Bearer ${st.apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const d = await r.json();
+      if (d && typeof d.ok === 'boolean') return sendJSON(res, 200, d);
+    } catch { /* fall through */ }
+    sendJSON(res, 200, { ok: false });
+  });
+  // AI suggests stat *definitions* (labels only); values stay code-computed.
+  router.post('/api/stats/ticker/suggest', async (req, res) => {
+    const b = S().brain;
+    const user = `Suggest ticker KPIs for this business: ${b.businessName || 'a small business'}${b.industry ? ` (${b.industry})` : ''}${b.audience ? `, serving ${b.audience}` : ''}.`;
+    const raw = await aiPropose(S().settings, TICKER_SUGGEST_SYSTEM, user);
+    sendJSON(res, 200, parseLabelLines(raw));
+  });
 
   // ---------- agent / autopilot ----------
   const agentCtx = () => ({ store, ask: (helperId, message) => askHelper(helperId, [{ role: 'user', content: message }]) });

@@ -324,6 +324,48 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
   .kanban { grid-template-columns: 1fr; }
 }
 
+/* ---------- HELIX Ticker (header stats marquee) ---------- */
+#helix-ticker { flex: none; padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+#helix-ticker:empty { display: none; }
+/* ============ HELIX TICKER COMPONENT (self-contained: lift everything between the markers) ============ */
+  .hx-ticker{position:relative;background:#0f1420;border:1px solid #232b3d;border-radius:12px;overflow:hidden;
+    display:flex;align-items:stretch;font-size:.88rem;user-select:none}
+  .hx-ticker .hx-live{flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;background:#121a2c;
+    border-right:1px solid #232b3d;font-size:.68rem;font-weight:800;letter-spacing:.08em;color:#39d98a;white-space:nowrap}
+  .hx-ticker .hx-live.demo{color:#e8b64c}
+  .hx-ticker .hx-live .dot{width:7px;height:7px;border-radius:50%;background:currentColor;animation:hxPulse 1.6s infinite}
+  @keyframes hxPulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .hx-viewport{flex:1;overflow:hidden;position:relative}
+  .hx-track{display:flex;align-items:center;height:100%;width:max-content;will-change:transform;
+    animation:hxScroll var(--hx-dur,40s) linear infinite}
+  @keyframes hxScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .hx-viewport:hover .hx-track,.hx-track.hx-hold{animation-play-state:paused}
+  .hx-stat{display:flex;align-items:baseline;gap:7px;padding:11px 18px;white-space:nowrap;cursor:default;
+    border-right:1px solid #1b2334;transition:background .15s}
+  .hx-stat:hover{background:#161f33}
+  .hx-stat .k{color:#8b96a5;font-weight:600}
+  .hx-stat .v{font-weight:800;font-variant-numeric:tabular-nums}
+  .hx-stat .d{font-weight:700;font-size:.8rem;font-variant-numeric:tabular-nums}
+  .hx-up{color:#39d98a}.hx-down{color:#ff6b5e}.hx-flat{color:#8b96a5}
+  .hx-gear{flex:none;display:flex;align-items:center;padding:0 11px;background:#121a2c;border-left:1px solid #232b3d;
+    cursor:pointer;color:#8b96a5;font-size:1rem}
+  .hx-gear:hover{color:#e6edf3}
+  .hx-menu{position:absolute;right:6px;top:calc(100% + 8px);z-index:50;background:#131a2a;border:1px solid #2a3550;
+    border-radius:12px;padding:12px;min-width:270px;box-shadow:0 16px 48px rgba(0,0,0,.55);display:none}
+  .hx-menu.open{display:block}
+  .hx-menu h4{margin:0 0 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#8b96a5}
+  .hx-menu label{display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:.86rem;cursor:pointer}
+  .hx-menu .sect{border-top:1px solid #232b3d;margin-top:9px;padding-top:9px}
+  .hx-menu input[type=text]{width:100%;background:#0f1420;border:1px solid #232b3d;color:#e6edf3;border-radius:8px;
+    padding:7px 9px;font-size:.85rem;margin-top:5px;box-sizing:border-box}
+  .hx-menu .row2{display:flex;gap:6px;margin-top:6px}
+  .hx-menu button{background:#2d3f66;border:none;color:#e6edf3;border-radius:8px;padding:7px 11px;font-size:.8rem;
+    font-weight:700;cursor:pointer;flex:1}
+  .hx-menu button.hx-ai{background:linear-gradient(90deg,#6a5cff,#b45cff)}
+  .hx-menu .hint{font-size:.72rem;color:#8b96a5;margin-top:7px;line-height:1.45}
+  .hx-menu .rm{color:#ff6b5e;cursor:pointer;margin-left:auto;font-size:.8rem}
+  /* ============ /HELIX TICKER COMPONENT ============ */
+
 
 #demo-banner{flex:none;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;
   padding:8px 16px;background:linear-gradient(90deg,#1d2440,#161c30);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
@@ -344,6 +386,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
   <button id="menuBtn" aria-label="Open menu">☰</button>
   <span class="brand">⬢ HELIX</span>
 </div>
+<div id="helix-ticker"></div>
 <div id="app">
   <aside class="sidebar" id="sidebar"></aside>
   <div id="backdrop"></div>
@@ -2330,6 +2373,53 @@ async function runQuickstart(ctx, { name, description }) {
 }
 
 
+// Ticker stats: business KPIs computed from the store (accuracy mandate — the
+// ticker shows only code-computed numbers), plus the LABEL-line parser for
+// AI-suggested stat *definitions* (AI names stats; it never supplies values).
+
+function buildTickerStats(state) {
+  const stats = [];
+  const openTasks = (state.tasks || []).filter((t) => t.status !== 'done').length;
+  stats.push({ id: 'tasks', label: 'Open tasks', value: openTasks });
+  stats.push({ id: 'docs', label: 'Documents', value: (state.documents || []).length });
+  stats.push({ id: 'sites', label: 'Live websites', value: (state.sites || []).filter((s) => s.published).length });
+
+  // pageviews: last 7 days vs the 7 before (changePct only when a prior exists)
+  const day = (offset) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
+  const last7 = new Set(Array.from({ length: 7 }, (_, i) => day(i)));
+  const prev7 = new Set(Array.from({ length: 7 }, (_, i) => day(i + 7)));
+  let cur = 0, prev = 0;
+  for (const r of state.analytics || []) {
+    if (last7.has(r.day)) cur += r.count;
+    else if (prev7.has(r.day)) prev += r.count;
+  }
+  const pv = { id: 'views', label: 'Pageviews (7d)', value: cur };
+  if (prev > 0) pv.changePct = Math.round(((cur - prev) / prev) * 10000) / 100;
+  stats.push(pv);
+
+  const audit = (state.seoAudits || [])[0];
+  if (audit) stats.push({ id: 'seo', label: 'SEO score', value: audit.score });
+  const mems = (state.memories || []).length;
+  if (mems) stats.push({ id: 'memories', label: 'Brain memories', value: mems });
+  return stats;
+}
+
+const TICKER_SUGGEST_SYSTEM = [
+  'You suggest KPI stat definitions for a small-business dashboard ticker.',
+  'Reply ONLY with 3 to 5 lines of the form "LABEL: <short stat name>".',
+  'No values, no numbers, no other text. Never invent numeric values.',
+].join('\n');
+
+function parseLabelLines(raw) {
+  return String(raw || '')
+    .split('\n')
+    .map((l) => { const m = l.match(/LABEL:\s*(.+)/i); return m ? m[1].trim() : null; })
+    .filter(Boolean)
+    .slice(0, 5)
+    .map((label) => ({ label: label.slice(0, 60), value: '—' }));
+}
+
+
 // Minimal store-only ZIP writer — no dependencies, no compression. Isomorphic
 // (Uint8Array + TextEncoder), so it runs both in Node and in the browser demo.
 
@@ -3207,6 +3297,41 @@ async function handle(method, pathname, query, body) {
       break;
     }
 
+    case 'stats': {
+      if (p[1] === 'ticker' && p[2] === 'suggest' && method === 'POST') {
+        const st = db.settings;
+        if (!(st.provider === 'openai' && st.apiKey && st.baseUrl)) return ok([]);
+        try {
+          const b = db.brain;
+          const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: 'Bearer ' + st.apiKey },
+            body: JSON.stringify({ model: st.model || 'auto', max_tokens: 300, messages: [
+              { role: 'system', content: TICKER_SUGGEST_SYSTEM },
+              { role: 'user', content: 'Suggest ticker KPIs for this business: ' + (b.businessName || 'a small business') + (b.industry ? ' (' + b.industry + ')' : '') + '.' },
+            ] }),
+            signal: AbortSignal.timeout(12000),
+          });
+          const d = await r.json();
+          return ok(parseLabelLines(d?.choices?.[0]?.message?.content || ''));
+        } catch { return ok([]); }
+      }
+      if (p[1] === 'ticker') return ok(buildTickerStats(db));
+      if (p[1] === 'markets') {
+        const st = db.settings;
+        if (!(st.provider === 'openai' && st.apiKey && st.baseUrl)) return ok({ ok: false });
+        try {
+          const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/helix/markets', {
+            headers: { authorization: 'Bearer ' + st.apiKey }, signal: AbortSignal.timeout(10000),
+          });
+          const d = await r.json();
+          if (d && typeof d.ok === 'boolean') return ok(d);
+        } catch { /* fall through */ }
+        return ok({ ok: false });
+      }
+      break;
+    }
+
     case 'integrations': {
       if (p[1] === 'presets') return ok(PRESETS);
       if (p[1] === 'usage') return ok(usageSummary(db));
@@ -3399,6 +3524,188 @@ function downloadBlob(blob, filename) {
 }
 
 
+// HELIX Ticker — scrolling stats marquee (self-contained, zero dependencies).
+// Lifted from the VitaForge component per HELIXTICKERINTEGRATION.md.
+/* ============ HELIX TICKER COMPONENT JS (self-contained) ============ */
+var HelixTicker = (function(){
+  var PREFS_KEY = 'helix_ticker_prefs_v1';
+  var state = { speed: 45 /* px per second */, paused: false, offset: 0, raf: null, lastT: 0,
+    stats: [], prefs: null, opts: {}, host: null };
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function loadPrefs(){
+    try { var p = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); if (p && p.groups) return p; } catch(e){}
+    return { groups: { markets: true, business: true, custom: true }, hidden: {}, custom: [] };
+  }
+  function savePrefs(){ try { localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs)); } catch(e){} }
+
+  function fmtVal(v){
+    if (typeof v === 'number') return v >= 1000 ? v.toLocaleString('en-US', {maximumFractionDigits:2}) : String(Math.round(v*100)/100);
+    return String(v);
+  }
+  function deltaHtml(chg, pct){
+    if (chg == null && pct == null) return '';
+    var n = (pct != null ? pct : chg);
+    var cls = n > 0 ? 'hx-up' : (n < 0 ? 'hx-down' : 'hx-flat');
+    var arrow = n > 0 ? '▲' : (n < 0 ? '▼' : '•');
+    var bits = [];
+    if (chg != null) bits.push((chg>0?'+':'') + fmtVal(chg));
+    if (pct != null) bits.push((pct>0?'+':'') + (Math.round(pct*100)/100) + '%');
+    return '<span class="d '+cls+'">'+arrow+' '+bits.join(' · ')+'</span>';
+  }
+
+  // Build the visible stat list from groups + hidden map.
+  function visibleStats(){
+    return state.stats.filter(function(s){
+      if (!state.prefs.groups[s.group]) return false;
+      if (state.prefs.hidden[s.id]) return false;
+      return true;
+    });
+  }
+
+  function render(){
+    var host = state.host;
+    var vis = visibleStats();
+    var live = state.stats.some(function(s){ return s.group==='markets' && s.live; });
+    var itemHtml = vis.map(function(s){
+      return '<div class="hx-stat" data-id="'+esc(s.id)+'"><span class="k">'+esc(s.label)+'</span>'+
+        '<span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct)+'</div>';
+    }).join('');
+    if (!vis.length) itemHtml = '<div class="hx-stat"><span class="k">No stats selected — open ⚙</span></div>';
+    // Track duplicated for a seamless loop.
+    host.innerHTML =
+      '<div class="hx-ticker">'+
+        '<div class="hx-live'+(live?'':' demo')+'"><span class="dot"></span>'+(live?'LIVE':'SAMPLE')+'</div>'+
+        '<div class="hx-viewport"><div class="hx-track">'+itemHtml+itemHtml+'</div></div>'+
+        '<div class="hx-gear" title="Choose stats">⚙</div>'+
+      '</div>'+ menuHtml();
+    wire();
+  }
+
+  function menuHtml(){
+    var g = state.prefs.groups;
+    var perStat = state.stats.map(function(s){
+      return '<label><input type="checkbox" data-stat="'+esc(s.id)+'" '+(!state.prefs.hidden[s.id]?'checked':'')+'> '+esc(s.label)+
+        (s.group==='custom'?'<span class="rm" data-rm="'+esc(s.id)+'">remove</span>':'')+'</label>';
+    }).join('');
+    return '<div class="hx-menu" id="hxMenu">'+
+      '<h4>Stat groups</h4>'+
+      '<label><input type="checkbox" data-grp="markets" '+(g.markets?'checked':'')+'> Markets (default)</label>'+
+      '<label><input type="checkbox" data-grp="business" '+(g.business?'checked':'')+'> My business</label>'+
+      '<label><input type="checkbox" data-grp="custom" '+(g.custom?'checked':'')+'> Custom</label>'+
+      '<div class="sect"><h4>Individual stats</h4>'+perStat+'</div>'+
+      '<div class="sect"><h4>Add custom stat</h4>'+
+        '<input type="text" id="hxCLabel" placeholder="Label — e.g. Weekly signups">'+
+        '<input type="text" id="hxCValue" placeholder="Value — e.g. 42">'+
+        '<div class="row2"><button id="hxAdd">+ Add</button><button class="hx-ai" id="hxAI">✨ AI suggest</button></div>'+
+        '<div class="hint" id="hxHint">AI suggests WHICH stats matter for your business — values always come from your data, never invented.</div>'+
+      '</div></div>';
+  }
+
+  function wire(){
+    var host = state.host;
+    var track = host.querySelector('.hx-track');
+    var menu = host.querySelector('#hxMenu');
+
+    // Marquee = pure CSS animation (GPU-composited; :hover pauses it natively —
+    // no JS loop to throttle). Duration derived from content width for constant px/s.
+    var half = track.scrollWidth / 2;
+    track.style.setProperty('--hx-dur', Math.max(12, half / state.speed) + 's');
+    // touch devices have no hover: tap toggles pause
+    host.querySelector('.hx-viewport').addEventListener('touchstart', function(){ track.classList.toggle('hx-hold'); }, {passive:true});
+
+    host.querySelector('.hx-gear').addEventListener('click', function(e){ e.stopPropagation(); menu.classList.toggle('open'); });
+    document.addEventListener('click', function(e){ if (!menu.contains(e.target)) menu.classList.remove('open'); });
+
+    menu.querySelectorAll('input[data-grp]').forEach(function(cb){
+      cb.addEventListener('change', function(){ state.prefs.groups[cb.dataset.grp] = cb.checked; savePrefs(); rebuild(); });
+    });
+    menu.querySelectorAll('input[data-stat]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        if (cb.checked) delete state.prefs.hidden[cb.dataset.stat]; else state.prefs.hidden[cb.dataset.stat] = true;
+        savePrefs(); rebuild();
+      });
+    });
+    menu.querySelectorAll('.rm').forEach(function(el){
+      el.addEventListener('click', function(e){ e.preventDefault();
+        state.prefs.custom = state.prefs.custom.filter(function(c){ return c.id !== el.dataset.rm; });
+        savePrefs(); assemble(); rebuild();
+      });
+    });
+    var add = menu.querySelector('#hxAdd');
+    if (add) add.addEventListener('click', function(){
+      var l = menu.querySelector('#hxCLabel').value.trim();
+      var v = menu.querySelector('#hxCValue').value.trim();
+      if (!l || !v) return;
+      var num = parseFloat(v);
+      state.prefs.custom.push({ id: 'c_' + Date.now(), label: l, value: isFinite(num) && String(num) === v ? num : v });
+      savePrefs(); assemble(); rebuild();
+    });
+    var ai = menu.querySelector('#hxAI');
+    if (ai) ai.addEventListener('click', function(){
+      var hint = menu.querySelector('#hxHint');
+      if (typeof state.opts.aiSuggest === 'function') {
+        hint.textContent = 'Asking your AI team…';
+        Promise.resolve(state.opts.aiSuggest()).then(function(suggestions){
+          (suggestions || []).slice(0,5).forEach(function(s){
+            if (s && s.label) state.prefs.custom.push({ id: 'c_' + Math.random().toString(36).slice(2), label: s.label, value: (s.value != null ? s.value : '—') });
+          });
+          savePrefs(); assemble(); rebuild();
+        }).catch(function(){ hint.textContent = 'AI suggest unavailable right now.'; });
+      } else {
+        hint.textContent = 'Connect the gateway (Settings) to enable AI suggestions.';
+      }
+    });
+
+  }
+
+  // Assemble the stat list from sources.
+  function assemble(){
+    var stats = [];
+    (state.marketQuotes || []).forEach(function(q){
+      stats.push({ id: 'm_' + q.symbol, group: 'markets', label: q.symbol, value: q.last, change: q.change, changePct: q.changePct, live: true });
+    });
+    if (!stats.length) {
+      // Clearly-labeled sample market data (badge shows SAMPLE).
+      [['SPY', 748.28, 6.2, 0.83], ['QQQ', 622.4, -1.9, -0.3], ['DIA', 512.1, 2.4, 0.47], ['BTC', 118342, 1120, 0.96]]
+        .forEach(function(r){ stats.push({ id: 'm_' + r[0], group: 'markets', label: r[0] + ' (sample)', value: r[1], change: r[2], changePct: r[3], live: false }); });
+    }
+    (state.opts.businessStats || []).forEach(function(b, i){
+      stats.push({ id: 'b_' + (b.id || i), group: 'business', label: b.label, value: b.value, change: b.change != null ? b.change : null, changePct: b.changePct != null ? b.changePct : null });
+    });
+    (state.prefs.custom || []).forEach(function(c){
+      stats.push({ id: c.id, group: 'custom', label: c.label, value: c.value });
+    });
+    state.stats = stats;
+  }
+  function rebuild(){ render(); }
+
+  function mount(sel, opts){
+    state.host = typeof sel === 'string' ? document.querySelector(sel) : sel;
+    state.opts = opts || {};
+    state.prefs = loadPrefs();
+    state.marketQuotes = null;
+    assemble(); render();
+    // fetch live markets
+    if (state.opts.marketsUrl) {
+      fetch(state.opts.marketsUrl, { headers: state.opts.gatewayKey ? { 'Authorization': 'Bearer ' + state.opts.gatewayKey } : {} })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d && d.ok && d.quotes && d.quotes.length) { state.marketQuotes = d.quotes; assemble(); render(); } })
+        .catch(function(){ /* stay on labeled sample */ });
+      if (state.opts.refreshMs) setInterval(function(){
+        fetch(state.opts.marketsUrl, { headers: state.opts.gatewayKey ? { 'Authorization': 'Bearer ' + state.opts.gatewayKey } : {} })
+          .then(function(r){ return r.json(); })
+          .then(function(d){ if (d && d.ok && d.quotes && d.quotes.length) { state.marketQuotes = d.quotes; assemble(); render(); } })
+          .catch(function(){});
+      }, Math.max(60000, state.opts.refreshMs));
+    }
+    return { refresh: function(){ assemble(); render(); } };
+  }
+  return { mount: mount };
+})();
+/* ============ /HELIX TICKER COMPONENT JS ============ */
+
+
 /* HELIX SPA — vanilla JS, hash router, zero dependencies. */
 'use strict';
 
@@ -3558,6 +3865,7 @@ function navigate() {
     if (!root.isConnected) return; // superseded by a newer navigation
     root.innerHTML = `<div class="page"><div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div></div>`;
   });
+  refreshTickerStats(); // keep the header marquee in step with the workspace
 }
 window.addEventListener('hashchange', navigate);
 
@@ -4949,8 +5257,35 @@ routes.integrations = async (main) => {
   });
 };
 
+// ---------- header ticker ----------
+const tickerBiz = []; // shared by reference with the component; mutate + refresh
+let tickerRef = null;
+async function mountTicker() {
+  if (typeof HelixTicker === 'undefined' || !$('#helix-ticker')) return;
+  try { tickerBiz.push(...await api('GET', '/api/stats/ticker')); } catch { /* stats optional */ }
+  tickerRef = HelixTicker.mount('#helix-ticker', {
+    marketsUrl: '/api/stats/markets', // key-safe proxy; badge shows SAMPLE until live
+    refreshMs: 120000,
+    businessStats: tickerBiz,
+    aiSuggest: () => api('POST', '/api/stats/ticker/suggest'),
+  });
+}
+let tickerTimer = null;
+function refreshTickerStats() {
+  if (!tickerRef) return;
+  clearTimeout(tickerTimer);
+  tickerTimer = setTimeout(async () => {
+    try {
+      const fresh = await api('GET', '/api/stats/ticker');
+      tickerBiz.length = 0;
+      tickerBiz.push(...fresh);
+      tickerRef.refresh();
+    } catch { /* keep last values */ }
+  }, 700);
+}
+
 // ---------- boot ----------
-loadBoot().then(navigate).catch((e) => {
+loadBoot().then(() => { navigate(); mountTicker(); }).catch((e) => {
   $('#main').innerHTML = `<div class="page"><div class="empty">Could not reach the HELIX server: ${esc(e.message)}</div></div>`;
 });
 

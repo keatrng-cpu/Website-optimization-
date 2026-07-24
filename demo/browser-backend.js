@@ -587,6 +587,41 @@ async function handle(method, pathname, query, body) {
       break;
     }
 
+    case 'stats': {
+      if (p[1] === 'ticker' && p[2] === 'suggest' && method === 'POST') {
+        const st = db.settings;
+        if (!(st.provider === 'openai' && st.apiKey && st.baseUrl)) return ok([]);
+        try {
+          const b = db.brain;
+          const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: 'Bearer ' + st.apiKey },
+            body: JSON.stringify({ model: st.model || 'auto', max_tokens: 300, messages: [
+              { role: 'system', content: TICKER_SUGGEST_SYSTEM },
+              { role: 'user', content: 'Suggest ticker KPIs for this business: ' + (b.businessName || 'a small business') + (b.industry ? ' (' + b.industry + ')' : '') + '.' },
+            ] }),
+            signal: AbortSignal.timeout(12000),
+          });
+          const d = await r.json();
+          return ok(parseLabelLines(d?.choices?.[0]?.message?.content || ''));
+        } catch { return ok([]); }
+      }
+      if (p[1] === 'ticker') return ok(buildTickerStats(db));
+      if (p[1] === 'markets') {
+        const st = db.settings;
+        if (!(st.provider === 'openai' && st.apiKey && st.baseUrl)) return ok({ ok: false });
+        try {
+          const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/helix/markets', {
+            headers: { authorization: 'Bearer ' + st.apiKey }, signal: AbortSignal.timeout(10000),
+          });
+          const d = await r.json();
+          if (d && typeof d.ok === 'boolean') return ok(d);
+        } catch { /* fall through */ }
+        return ok({ ok: false });
+      }
+      break;
+    }
+
     case 'integrations': {
       if (p[1] === 'presets') return ok(PRESETS);
       if (p[1] === 'usage') return ok(usageSummary(db));
