@@ -1,20 +1,27 @@
 // On-page SEO audit engine. Audits raw HTML (from a local Studio site or a
 // fetched URL) with weighted checks and returns a scored report.
 
+// Browsers and search engines see decoded text — "&amp;" is one character,
+// so lengths must be measured after decoding or escaped titles over-count.
+function decodeEntities(s) {
+  return s
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/g, ' ');
+}
 function extract(re, html, group = 1) {
   const m = html.match(re);
-  return m ? m[group].trim() : null;
+  return m ? decodeEntities(m[group].trim()) : null;
 }
 function countMatches(re, html) {
   return (html.match(re) || []).length;
 }
 function textContent(html) {
-  return html
+  return decodeEntities(html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim());
 }
 
 export function auditHTML(html, target) {

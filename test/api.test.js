@@ -1015,6 +1015,15 @@ test('owner: founder key prefix also unlocks; role is derived, not client-set', 
   assert.equal((await api('GET', '/api/account')).data.role, 'member', 'role recomputed when key changes');
 });
 
+test('seo auditor: measures decoded text, so "&" businesses are not penalized', async () => {
+  const { auditHTML } = await import('../server/seo.js');
+  const title = 'Ember &amp; Oak Candle Co — Hand-poured soy candles with wood'; // 61 escaped, 57 decoded
+  const html = `<html><head><title>${title}</title><meta name="description" content="Hand-poured soy candles with wood wicks for cozy homes in Austin. Shop single candles, gift sets and monthly subscriptions with warm, natural scents."></head><body><h1>Ember &amp; Oak</h1>hello</body></html>`;
+  const rep = auditHTML(html);
+  const check = rep.checks.find((c) => c.id === 'title-length');
+  assert.ok(check.pass, `title-length must pass at 57 decoded chars (got: ${check.detail})`);
+});
+
 test('workspaces: plan limits and full data isolation between businesses', async () => {
   // free plan: 1 business, creation refused
   await api('PUT', '/api/account', { name: 'Free User', email: 'free@example.com', licenseKey: '' });

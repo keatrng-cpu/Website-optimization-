@@ -30,10 +30,13 @@ about 10 minutes.
    Rename it in *Site settings → Site details → Change site name* to something
    like `helix-app`.
 
-**Or connect the repo (auto-deploys on every push):**
-1. Netlify → *Add new site → Import an existing project* → pick
-   `keatrng-cpu/Website-optimization-`, branch `main`.
+**Or connect the repo — RECOMMENDED (auto-deploys on every push):**
+1. Netlify → your `helixscales` site → *Site configuration → Build & deploy →
+   Link repository* → pick `keatrng-cpu/Website-optimization-`, branch `main`.
 2. Build command: *(leave empty)* · Publish directory: `launch/site`.
+3. Done forever: every improvement Claude pushes to `main` goes live on
+   helixscales.netlify.app automatically — no more zip dragging, and the
+   Stripe links/forms/PWA all ship correctly every time.
 
 ## Checkout, confirmations & receipts (live links now baked in)
 

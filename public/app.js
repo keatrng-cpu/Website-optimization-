@@ -194,6 +194,7 @@ const NAV = [
   { label: 'Connect' },
   { id: 'integrations', icon: '🔌', name: 'Integrations', badge: 'integrations' },
   { label: 'Learn' },
+  { id: 'launchpad', icon: '🏛️', name: 'Business Launchpad' },
   { id: 'about', icon: '✨', name: 'About HELIX' },
   { id: 'howto', icon: '🧭', name: 'How-to & Tips' },
   { label: 'System' },
@@ -1471,6 +1472,96 @@ routes.autopilot = async (main) => {
     const ex = e.target.closest('[data-ex]');
     if (ex) { $('#goal', main).value = ex.dataset.ex; preview(ex.dataset.ex); }
   });
+};
+
+const LAUNCHPAD = [
+  { icon: '🏢', title: 'Pick your structure', items: [
+    ['Why an LLC', 'For most small businesses an LLC separates your personal assets from business liabilities while keeping simple pass-through taxes. A sole proprietorship is easier but offers zero liability protection; a C-corp mainly makes sense if you plan to raise venture capital.'],
+    ['Name it properly', 'Search your state’s business registry AND uspto.gov trademarks before committing. If your brand name differs from the legal name, you can file a DBA ("doing business as") later.'],
+  ]},
+  { icon: '📜', title: 'Form the LLC', items: [
+    ['File where you actually operate', 'Underrated tip: form in your HOME state. Delaware/Wyoming look attractive online, but if you operate elsewhere you must also register as a "foreign LLC" there — double fees, double annual reports. Out-of-state formation mostly helps specific cases (investors, real-estate holdings, privacy strategies).'],
+    ['Articles of Organization', 'Filed with your state’s Secretary of State, usually online, typically $50–$500 depending on the state. Processing runs from instant to a few weeks; many states sell same-day expedite cheaply.'],
+    ['Registered agent', 'You can be your own for free — but your street address becomes public record and you must be available during business hours. Agent services (~$50–150/yr) keep your home address private. That privacy angle is the tip most first-timers miss.'],
+    ['Operating agreement', 'Write one even as a single member. Banks ask for it, and it strengthens the liability shield by showing the LLC is a real, separate entity.'],
+  ]},
+  { icon: '🔢', title: 'EIN & money hygiene', items: [
+    ['EIN — free, 15 minutes, IRS only', 'Get it directly at irs.gov (search "apply EIN online"). It is always free — any site charging for an EIN is a middleman. You need it for a bank account, hiring, and S-corp election; even solo, an EIN keeps your SSN off W-9s.'],
+    ['Open a separate bank account immediately', 'The single most important habit: never mix personal and business money. "Commingling" is the #1 way courts pierce the liability veil and reach personal assets — and it makes taxes miserable.'],
+    ['Bookkeeping from day one', 'Pick any system (even a spreadsheet) before revenue arrives. Save receipts; reconstruct nothing.'],
+  ]},
+  { icon: '🛡️', title: 'Insurance', items: [
+    ['General liability', 'Covers third-party injury/property damage; most client contracts and commercial leases require a certificate of insurance.'],
+    ['Professional liability (E&O)', 'For advice/service businesses — covers claims that your work caused a client financial harm.'],
+    ['Bundles & add-ons', 'A Business Owner’s Policy (BOP) bundles general liability + property for less. Add cyber liability if you hold customer data; workers’ comp is state-mandatory once you have employees.'],
+  ]},
+  { icon: '🗂️', title: 'Codes, licenses & zoning', items: [
+    ['NAICS code', 'You self-assign it (census.gov/naics). It quietly matters: insurers quote by it, lenders screen by it, and government contracting set-asides key off it — pick the code that genuinely fits.'],
+    ['Local licenses', 'Many cities/counties require a general business license; states require sales-tax permits if you sell taxable goods (register with your state Department of Revenue).'],
+    ['Zoning & home businesses', 'Check local zoning before running a business from home — some cities require a home-occupation permit, and HOAs can have their own rules. Client visits, signage and inventory storage are the usual triggers.'],
+  ]},
+  { icon: '💰', title: 'Tax setup & common optimizations', items: [
+    ['Quarterly estimated taxes', 'Profitable from day one? The IRS expects estimated payments four times a year (Form 1040-ES) — missing them means penalties even if you pay in April.'],
+    ['Deductions people commonly discuss with their CPA', 'Home office (simplified method: $5/sq ft up to 300 sq ft), business mileage at the IRS standard rate, equipment (Section 179 / bonus depreciation), software subscriptions, up to $5,000 of startup costs in year one, self-employed health insurance premiums, and retirement plans (Solo 401(k) / SEP-IRA) that cut taxes while paying your future self.'],
+    ['QBI', 'The Qualified Business Income deduction can shave up to 20% off pass-through income for eligible businesses — worth asking a CPA whether you qualify.'],
+    ['The S-corp election', 'Once profits are consistently strong (a commonly cited zone is ~$40–60k+), electing S-corp taxation (Form 2553) can reduce self-employment tax — but it requires payroll and a "reasonable salary," so model it with a CPA first.'],
+  ]},
+  { icon: '📅', title: 'Stay compliant', items: [
+    ['Annual obligations', 'Most states require an annual/biennial report and fee to keep the LLC in good standing — calendar it; missing it can administratively dissolve your company.'],
+    ['Contractors', 'Collect a W-9 from every contractor before paying them; issue 1099-NEC forms for anyone paid $600+ in a year.'],
+    ['Federal reporting', 'Beneficial-ownership (BOI) rules have changed several times — as of 2025 most U.S.-formed companies were exempted, but verify the current state at fincen.gov before assuming.'],
+  ]},
+];
+
+routes.launchpad = async (main) => {
+  await loadBoot();
+  main.innerHTML = `<div class="page">
+    <div class="page-head"><div><h1>🏛️ Business Launchpad</h1>
+      <p>The paperwork side of starting up — LLC, EIN, insurance, licenses and taxes — in plain language, with the tips people usually learn the expensive way.</p></div>
+      <button class="btn" id="lpTasks">✅ Add checklist to Tasks</button></div>
+    <div class="since-band" style="margin-bottom:18px">⚖️ <b>Heads up</b><span>Educational information for U.S. businesses — not legal, tax or insurance advice. Rules vary by state and change; verify with the official sources linked below and use a licensed attorney/CPA for your specific situation.</span></div>
+    <div class="grid c2" style="align-items:start">
+      ${LAUNCHPAD.map((sec) => `
+        <div class="card">
+          <b style="font-size:15px">${sec.icon} ${sec.title}</b>
+          ${sec.items.map(([t, body]) => `
+            <details style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+              <summary style="cursor:pointer;font-weight:600;font-size:13.5px">${t}</summary>
+              <p class="muted" style="margin:8px 0 0;font-size:13px;line-height:1.6">${body}</p>
+            </details>`).join('')}
+        </div>`).join('')}
+    </div>
+    <div class="card" style="margin-top:18px">
+      <b>Official sources (bookmark these, skip the middlemen)</b>
+      <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+        ${[['IRS — free EIN & tax forms', 'https://www.irs.gov'], ['SBA — free guides & mentoring', 'https://www.sba.gov'], ['NAICS code lookup', 'https://www.census.gov/naics'], ['USPTO trademark search', 'https://www.uspto.gov'], ['FinCEN — BOI status', 'https://www.fincen.gov']]
+          .map(([t, u]) => `<a class="btn ghost sm" href="${u}" target="_blank" rel="noopener">${t} ↗</a>`).join('')}
+      </div>
+      <p class="dim" style="margin-top:12px">Your state’s Secretary of State (formation, annual reports) and Department of Revenue (sales tax) are the other two official stops — search "[your state] Secretary of State business".</p>
+    </div>
+  </div>`;
+
+  $('#lpTasks', main).onclick = async () => {
+    const btn = $('#lpTasks', main);
+    btn.disabled = true; btn.textContent = '⏳ Adding…';
+    const tasks = [
+      ['Choose business structure & search name availability', 'milli'],
+      ['File LLC Articles of Organization with the state', 'vizzy'],
+      ['Decide registered agent (self vs service — privacy tradeoff)', 'vizzy'],
+      ['Write & sign an operating agreement', 'vizzy'],
+      ['Get free EIN at irs.gov', 'vizzy'],
+      ['Open a dedicated business bank account', 'milli'],
+      ['Set up bookkeeping & receipts system', 'dexter'],
+      ['Get insurance quotes (GL + E&O; consider BOP/cyber)', 'cassie'],
+      ['Confirm NAICS code, local licenses, sales-tax permit & zoning', 'vizzy'],
+      ['Calendar quarterly estimated taxes + state annual report', 'dexter'],
+    ];
+    try {
+      for (const [title, helperId] of tasks) await api('POST', '/api/tasks', { title, helperId, priority: 'high' });
+      toast('10 launch tasks added to your board ✅');
+      location.hash = '#/tasks';
+    } catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = '✅ Add checklist to Tasks'; }
+  };
 };
 
 routes.owner = async (main) => {
