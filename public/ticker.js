@@ -39,6 +39,11 @@ var HelixTicker = (function(){
 
   function render(){
     var host = state.host;
+    // innerHTML rebuild would otherwise close the menu and wipe typed input
+    var prevMenu = host.querySelector('#hxMenu');
+    var keepOpen = !!(prevMenu && prevMenu.classList.contains('open'));
+    var keepLabel = prevMenu && prevMenu.querySelector('#hxCLabel') ? prevMenu.querySelector('#hxCLabel').value : '';
+    var keepValue = prevMenu && prevMenu.querySelector('#hxCValue') ? prevMenu.querySelector('#hxCValue').value : '';
     var vis = visibleStats();
     var live = state.stats.some(function(s){ return s.group==='markets' && s.live; });
     var itemHtml = vis.map(function(s){
@@ -53,6 +58,10 @@ var HelixTicker = (function(){
         '<div class="hx-viewport"><div class="hx-track">'+itemHtml+itemHtml+'</div></div>'+
         '<div class="hx-gear" title="Choose stats">⚙</div>'+
       '</div>'+ menuHtml();
+    var menu = host.querySelector('#hxMenu');
+    if (keepOpen) menu.classList.add('open');
+    if (keepLabel) menu.querySelector('#hxCLabel').value = keepLabel;
+    if (keepValue) menu.querySelector('#hxCValue').value = keepValue;
     wire();
   }
 
@@ -89,7 +98,17 @@ var HelixTicker = (function(){
     host.querySelector('.hx-viewport').addEventListener('touchstart', function(){ track.classList.toggle('hx-hold'); }, {passive:true});
 
     host.querySelector('.hx-gear').addEventListener('click', function(e){ e.stopPropagation(); menu.classList.toggle('open'); });
-    document.addEventListener('click', function(e){ if (!menu.contains(e.target)) menu.classList.remove('open'); });
+    if (!state.docBound) {
+      state.docBound = true;
+      document.addEventListener('click', function(e){
+        var m = state.host && state.host.querySelector('#hxMenu');
+        if (!m) return;
+        // a click on a menu control can rebuild the menu mid-dispatch; the
+        // detached target would read as "outside" and wrongly close it
+        if (e.target && !e.target.isConnected) return;
+        if (!m.contains(e.target)) m.classList.remove('open');
+      });
+    }
 
     menu.querySelectorAll('input[data-grp]').forEach(function(cb){
       cb.addEventListener('change', function(){ state.prefs.groups[cb.dataset.grp] = cb.checked; savePrefs(); rebuild(); });
@@ -113,6 +132,8 @@ var HelixTicker = (function(){
       if (!l || !v) return;
       var num = parseFloat(v);
       state.prefs.custom.push({ id: 'c_' + Date.now(), label: l, value: isFinite(num) && String(num) === v ? num : v });
+      menu.querySelector('#hxCLabel').value = '';
+      menu.querySelector('#hxCValue').value = '';
       savePrefs(); assemble(); rebuild();
     });
     var ai = menu.querySelector('#hxAI');
@@ -121,11 +142,19 @@ var HelixTicker = (function(){
       if (typeof state.opts.aiSuggest === 'function') {
         hint.textContent = 'Asking your AI team…';
         Promise.resolve(state.opts.aiSuggest()).then(function(suggestions){
-          (suggestions || []).slice(0,5).forEach(function(s){
-            if (s && s.label) state.prefs.custom.push({ id: 'c_' + Math.random().toString(36).slice(2), label: s.label, value: (s.value != null ? s.value : '—') });
+          var list = (suggestions || []).slice(0,5).filter(function(s){ return s && s.label; });
+          list.forEach(function(s){
+            state.prefs.custom.push({ id: 'c_' + Math.random().toString(36).slice(2), label: s.label, value: (s.value != null ? s.value : '—') });
           });
           savePrefs(); assemble(); rebuild();
-        }).catch(function(){ hint.textContent = 'AI suggest unavailable right now.'; });
+          var h = state.host.querySelector('#hxHint');
+          if (h) h.textContent = list.length
+            ? 'Added ' + list.length + ' suggested stat' + (list.length > 1 ? 's' : '') + ' — set their values from your data.'
+            : 'No suggestions yet — connect the gateway in Settings to enable AI suggestions.';
+        }).catch(function(){
+          var h = state.host.querySelector('#hxHint');
+          if (h) h.textContent = 'AI suggest unavailable right now.';
+        });
       } else {
         hint.textContent = 'Connect the gateway (Settings) to enable AI suggestions.';
       }

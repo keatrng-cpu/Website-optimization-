@@ -318,8 +318,13 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
 }
 
 /* ---------- HELIX Ticker (header stats marquee) ---------- */
-#helix-ticker { flex: none; padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+#helix-ticker { flex: none; position: relative; padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); }
 #helix-ticker:empty { display: none; }
+/* the prefs menu anchors to the host and must never outgrow the viewport */
+#helix-ticker .hx-menu { max-height: min(72vh, 560px); overflow-y: auto; max-width: min(92vw, 340px); }
+/* shield the menu from the app's global form styles (label display:block, input width:100%) */
+#helix-ticker .hx-menu label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 5px 2px; font-size: .86rem; font-weight: 400; letter-spacing: normal; color: var(--text); }
+#helix-ticker .hx-menu input[type="checkbox"] { width: auto; flex: none; margin: 0; padding: 0; accent-color: var(--accent); }
 /* ============ HELIX TICKER COMPONENT (self-contained: lift everything between the markers) ============ */
   .hx-ticker{position:relative;background:#0f1420;border:1px solid #232b3d;border-radius:12px;overflow:hidden;
     display:flex;align-items:stretch;font-size:.88rem;user-select:none}
