@@ -14,7 +14,7 @@ const DEFAULTS = () => ({
   },
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
-  feedback: {}, usageLog: [],
+  feedback: {}, usageLog: [], agentRuns: [],
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -691,10 +691,18 @@ async function handle(method, pathname, query, body) {
         try { return ok({ tool: body.tool, result: await tools[body.tool].run(ctx, body.args || {}) }); }
         catch (e) { return bad(e.message); }
       }
+      if (p[1] === 'plan' && method === 'POST') {
+        if (!body.goal || !String(body.goal).trim()) return bad('goal is required');
+        return ok({ steps: previewPlan(ctx, clean(String(body.goal), 2000)), mode: 'planner' });
+      }
+      if (p[1] === 'runs') return ok(db.agentRuns || []);
       if (p[1] === 'run' && method === 'POST') {
         if (!body.goal || !String(body.goal).trim()) return bad('goal is required');
-        const out = await runPlanner(ctx, { goal: clean(String(body.goal), 2000) });
-        db.inbox.unshift({ id: uid(), title: `Autopilot ran: “${String(body.goal).slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, createdAt: Date.now() });
+        const goal = clean(String(body.goal), 2000);
+        const out = await runPlanner(ctx, { goal });
+        const run = { id: uid(), goal, mode: out.mode, summary: out.summary, steps: out.steps, createdAt: Date.now() };
+        db.agentRuns = [run, ...(db.agentRuns || [])].slice(0, 20);
+        db.inbox.unshift({ id: uid(), title: `Autopilot ran: “${goal.slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, link: '#/autopilot', createdAt: Date.now() });
         save();
         return ok(out);
       }

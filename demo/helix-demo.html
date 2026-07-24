@@ -128,8 +128,17 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
 
 /* stat tiles */
 .stat { padding: 16px 18px; }
-.stat .num { font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
-.stat .lbl { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.stat .num { font-size: 34px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--accent); }
+.grid .stat:nth-child(2n) .num { color: #b45cff; }
+.stat .lbl { color: var(--muted); font-size: 11px; margin-top: 3px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+/* PANTHEON-style re-engagement banner */
+.since-band { display: flex; align-items: center; gap: 10px; padding: 11px 16px; margin-bottom: 18px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 12px; font-size: 13px; }
+.since-band b { letter-spacing: .06em; text-transform: uppercase; font-size: 12px; }
+.since-band .dismiss { margin-left: auto; cursor: pointer; color: var(--muted); background: none; border: 1px solid var(--border);
+  border-radius: 8px; padding: 3px 10px; font-size: 12px; }
+.since-band .dismiss:hover { color: var(--text); }
 
 /* ---------- chat ---------- */
 .chat-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; height: calc(100vh - 150px); min-height: 420px; }
@@ -616,9 +625,9 @@ function detectIntent(text) {
   const has = (...ws) => ws.some((w) => t.includes(w));
   if (has('subject line', 'email', 'newsletter', 'drip', 'sequence')) return 'email';
   if (has('social', 'post', 'instagram', 'linkedin', 'tiktok', 'tweet', 'caption', 'hashtag')) return 'social';
-  if (has('seo', 'keyword', 'rank', 'meta description', 'search')) return 'seo';
+  if (has('sales', 'cold', 'outreach', 'pitch', 'objection', 'close', 'proposal', 'call script', 'discovery questions')) return 'sales';
+  if (has('seo', 'keyword', 'rank', 'meta description', 'search engine', 'serp', 'organic search')) return 'seo';
   if (has('landing', 'headline', 'copy', 'tagline', 'slogan', 'ad ')) return 'copy';
-  if (has('sales', 'cold', 'outreach', 'pitch', 'objection', 'close', 'proposal')) return 'sales';
   if (has('support', 'refund', 'complaint', 'apolog', 'faq', 'help article')) return 'support';
   if (has('job', 'hire', 'hiring', 'candidate', 'interview', 'recruit')) return 'recruiting';
   if (has('kpi', 'metric', 'report', 'analyz', 'analys', 'data', 'forecast', 'a/b')) return 'data';
@@ -2125,7 +2134,7 @@ async function runAgent(ctx, { goal, callModel, maxSteps = 8 }) {
 
 // Deterministic offline planner: maps a goal to a real sequence of tool calls.
 // No LLM required — autonomy that works with zero keys.
-async function runPlanner(ctx, { goal }) {
+function buildPlan(ctx, goal) {
   const g = String(goal || '').toLowerCase();
   const has = (...ws) => ws.some((w) => g.includes(w));
   const plan = [];
@@ -2148,7 +2157,7 @@ async function runPlanner(ctx, { goal }) {
   if (has('sell', 'sales', 'revenue', 'pipeline', 'outreach')) {
     plan.push(['run_powerup', { powerupId: 'sales-script', inputs: { offer: goal } }]);
   }
-  if (has('seo', 'rank', 'search', 'traffic')) {
+  if (has('seo', 'rank', 'search engine', 'serp', 'traffic')) {
     plan.push(['run_powerup', { powerupId: 'seo-brief', inputs: { topic: goal } }]);
   }
   // sensible default so any goal produces real output
@@ -2159,13 +2168,34 @@ async function runPlanner(ctx, { goal }) {
 
   // dedupe identical steps within a run (e.g. two branches both adding an audit)
   const seen = new Set();
-  const deduped = plan.filter(([tool, args]) => {
+  return plan.filter(([tool, args]) => {
     const key = tool + JSON.stringify(args);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
 
+// Human-readable one-liners so the UI can show the plan before anything runs.
+const STEP_LABELS = {
+  create_task: (a) => `Create task: “${a.title || 'follow-up'}”`,
+  run_powerup: (a) => `Generate a ${String(a.powerupId || 'deliverable').replace(/-/g, ' ')}`,
+  create_website: (a) => `Build & publish a website for ${a.name || 'the business'}`,
+  run_seo_audit: () => 'Run a full SEO audit',
+  generate_content_calendar: () => 'Plan a week of social content',
+  draft_email_campaign: () => 'Draft an email campaign',
+  call_integration: (a) => `Call connected integration: ${a.id || ''}`,
+  get_workspace_summary: () => 'Review the workspace',
+};
+
+function previewPlan(ctx, goal) {
+  return buildPlan(ctx, goal).map(([tool, args]) => ({
+    tool, args, label: (STEP_LABELS[tool] || (() => tool.replace(/_/g, ' ')))(args),
+  }));
+}
+
+async function runPlanner(ctx, { goal }) {
+  const deduped = buildPlan(ctx, goal);
   const steps = [];
   for (const [tool, args] of deduped) {
     let result;
@@ -2363,7 +2393,7 @@ async function runQuickstart(ctx, { name, description }) {
   s.inbox.unshift({
     id: uid(), title: 'Quick Start finished — your business scaffold is live',
     body: `Website /sites/${site.slug} (SEO ${audit.score}/100), 7 posts drafted, weekly automation running.`,
-    from: 'vizzy', read: false, documentId: null, createdAt: Date.now(),
+    from: 'vizzy', read: false, documentId: null, link: '#/sites', createdAt: Date.now(),
   });
   ctx.store.save();
 
@@ -2729,7 +2759,7 @@ const DEFAULTS = () => ({
   },
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
-  feedback: {}, usageLog: [],
+  feedback: {}, usageLog: [], agentRuns: [],
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -3406,10 +3436,18 @@ async function handle(method, pathname, query, body) {
         try { return ok({ tool: body.tool, result: await tools[body.tool].run(ctx, body.args || {}) }); }
         catch (e) { return bad(e.message); }
       }
+      if (p[1] === 'plan' && method === 'POST') {
+        if (!body.goal || !String(body.goal).trim()) return bad('goal is required');
+        return ok({ steps: previewPlan(ctx, clean(String(body.goal), 2000)), mode: 'planner' });
+      }
+      if (p[1] === 'runs') return ok(db.agentRuns || []);
       if (p[1] === 'run' && method === 'POST') {
         if (!body.goal || !String(body.goal).trim()) return bad('goal is required');
-        const out = await runPlanner(ctx, { goal: clean(String(body.goal), 2000) });
-        db.inbox.unshift({ id: uid(), title: `Autopilot ran: “${String(body.goal).slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, createdAt: Date.now() });
+        const goal = clean(String(body.goal), 2000);
+        const out = await runPlanner(ctx, { goal });
+        const run = { id: uid(), goal, mode: out.mode, summary: out.summary, steps: out.steps, createdAt: Date.now() };
+        db.agentRuns = [run, ...(db.agentRuns || [])].slice(0, 20);
+        db.inbox.unshift({ id: uid(), title: `Autopilot ran: “${goal.slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, link: '#/autopilot', createdAt: Date.now() });
         save();
         return ok(out);
       }
@@ -3714,6 +3752,20 @@ var HelixTicker = (function(){
   }
   function rebuild(){ render(); }
 
+  // Fast path for frequent refreshes: patch values into the existing DOM.
+  // A full render() would restart the marquee animation and rebuild the menu,
+  // so it is reserved for when the stat LIST itself changes.
+  function statSig(){ return state.stats.map(function(s){ return s.id + '|' + s.label; }).join(','); }
+  function patchValues(){
+    var byId = {};
+    state.stats.forEach(function(s){ byId[s.id] = s; });
+    state.host.querySelectorAll('.hx-stat[data-id]').forEach(function(n){
+      var s = byId[n.getAttribute('data-id')];
+      if (!s) return;
+      n.innerHTML = '<span class="k">'+esc(s.label)+'</span><span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct);
+    });
+  }
+
   function mount(sel, opts){
     state.host = typeof sel === 'string' ? document.querySelector(sel) : sel;
     state.opts = opts || {};
@@ -3733,7 +3785,15 @@ var HelixTicker = (function(){
           .catch(function(){});
       }, Math.max(60000, state.opts.refreshMs));
     }
-    return { refresh: function(){ assemble(); render(); } };
+    return { refresh: function(){
+      var before = statSig();
+      assemble();
+      if (statSig() === before) { patchValues(); return; }
+      // list changed — full rebuild, unless the prefs menu is open (it would
+      // be wiped mid-interaction; the next refresh after closing catches up)
+      var menu = state.host.querySelector('#hxMenu');
+      if (!(menu && menu.classList.contains('open'))) render();
+    } };
   }
   return { mount: mount };
 })();
@@ -3799,7 +3859,7 @@ function md(text) {
     const head = cells(rows[0]);
     const body = rows.slice(rows[1].match(/^\|[\s\-:|]+\|$/) ? 2 : 1);
     return `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${
-      body.map((r) => `<tr>${cells(r).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      body.map((r) => `<tr>${cells(r).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>\n`;
   });
   const lines = t.split('\n');
   const out = [];
@@ -3967,7 +4027,15 @@ routes.dashboard = async (main) => {
   const brain = brainRes.brain;
   const setup = !!brain.businessName;
   const open = tasks.filter((t) => t.status !== 'done').length;
+  // "Since you last looked" — computed from real timestamps, shown only when something happened.
+  const lastSeen = Number(localStorage.getItem('hx_last_seen') || 0);
+  const newInbox = lastSeen ? inbox.filter((i) => i.createdAt > lastSeen).length : 0;
+  const newDocs = lastSeen ? docs.filter((d) => d.createdAt > lastSeen).length : 0;
+  const sinceBits = [];
+  if (newInbox) sinceBits.push(`${newInbox} new result${newInbox === 1 ? '' : 's'} in your <a href="#/inbox">inbox</a>`);
+  if (newDocs) sinceBits.push(`${newDocs} new <a href="#/documents">document${newDocs === 1 ? '' : 's'}</a>`);
   main.innerHTML = `<div class="page">
+    ${sinceBits.length ? `<div class="since-band" id="sinceBand">◆ <b>Since you last looked</b><span>${sinceBits.join(' · ')}</span><button class="dismiss" id="sinceDismiss">dismiss</button></div>` : ''}
     <div class="page-head">
       <div><h1>${setup ? `Welcome back, ${esc(brain.businessName)}` : 'Welcome to HELIX'}</h1>
       <p>Your 12-person AI team is on the clock. ${setup ? 'Here’s where things stand.' : 'Describe your business once — get a website, content, and automations in about a minute.'}</p></div>
@@ -3998,7 +4066,7 @@ routes.dashboard = async (main) => {
           ${inbox.length ? inbox.slice(0, 5).map((i) => `
             <div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
               <div class="row spread"><b style="font-size:13px">${esc(i.title)}</b>${i.read ? '' : '<span class="badge acc">new</span>'}</div>
-              <div class="dim">${timeAgo(i.createdAt)}${i.documentId ? ` · <a href="#/documents/${i.documentId}">open</a>` : ''}</div>
+              <div class="dim">${timeAgo(i.createdAt)} · <a href="${i.documentId ? `#/documents/${i.documentId}` : (i.link || '#/inbox')}">open</a></div>
             </div>`).join('')
           : '<p class="dim" style="margin-top:8px">Nothing yet — run an automation or a power-up and results land here.</p>'}
         </div>
@@ -4011,6 +4079,9 @@ routes.dashboard = async (main) => {
       </div>
     </div>
   </div>`;
+  localStorage.setItem('hx_last_seen', String(Date.now()));
+  const band = $('#sinceDismiss', main);
+  if (band) band.onclick = () => $('#sinceBand', main).remove();
 };
 
 routes.helpers = async (main) => {
@@ -4317,7 +4388,7 @@ routes.inbox = async (main) => {
   main.innerHTML = `<div class="page">
     <div class="page-head"><div><h1>📥 Inbox</h1><p>Results from automations and your AI team land here.</p></div></div>
     ${inbox.length ? `<div class="card pad0">${inbox.map((i) => `
-      <a class="list-row" href="${i.documentId ? `#/documents/${i.documentId}` : '#'}" style="color:inherit">
+      <a class="list-row" href="${i.documentId ? `#/documents/${i.documentId}` : (i.link || '#/automations')}" style="color:inherit">
         ${state.helperMap[i.from] ? `<span class="avatar sm" style="background:${state.helperMap[i.from].color}22">${state.helperMap[i.from].emoji}</span>` : '📄'}
         <span style="flex:1"><b>${esc(i.title)}</b><div class="dim">${esc(i.body)}…</div></span>
         <span class="dim">${timeAgo(i.createdAt)}</span>
@@ -5013,6 +5084,7 @@ routes.autopilot = async (main) => {
     'Set up a sales push: script, outreach plan, and follow-up tasks',
     'Get me online: build and audit a website for my business',
   ];
+  const runs = await api('GET', '/api/agent/runs').catch(() => []);
   main.innerHTML = `<div class="page">
     <div class="hero-band" style="margin-bottom:22px">
       <div class="eyebrow">Autopilot</div>
@@ -5020,7 +5092,7 @@ routes.autopilot = async (main) => {
       <p class="lede">Describe an outcome and Autopilot breaks it into steps and <em>actually executes them</em> — creating tasks, building sites, running audits, generating content, and calling your connected tools. Not advice. Done work.</p>
       <div class="row" style="gap:8px;margin-top:4px">
         <input id="goal" placeholder="e.g. ${esc(examples[0])}" style="flex:1;min-width:260px" value="">
-        <button class="btn" id="go">🚀 Run Autopilot</button>
+        <button class="btn" id="go">🧭 Preview plan</button>
       </div>
       <div class="row" style="gap:6px;margin-top:12px;flex-wrap:wrap">
         ${examples.map((e) => `<button class="chip" data-ex="${esc(e)}">${esc(e)}</button>`).join('')}
@@ -5032,6 +5104,16 @@ routes.autopilot = async (main) => {
       </div>
     </div>
     <div id="runOut"></div>
+    ${runs.length ? `
+    <div class="card" style="margin-top:20px">
+      <b>Previous runs</b>
+      ${runs.slice(0, 5).map((r) => `
+        <details style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <summary style="cursor:pointer"><b style="font-size:13px">${esc(r.goal.slice(0, 90))}</b>
+            <span class="dim"> · ${r.steps.length} step${r.steps.length === 1 ? '' : 's'} · ${timeAgo(r.createdAt)}</span></summary>
+          <p class="muted" style="margin:8px 0 0;font-size:13px">${esc(r.summary)}</p>
+        </details>`).join('')}
+    </div>` : ''}
     <details style="margin-top:20px">
       <summary class="dim" style="cursor:pointer">What can Autopilot do? (${toolCount} tools)</summary>
       <div class="grid c2" style="margin-top:12px">
@@ -5052,22 +5134,71 @@ routes.autopilot = async (main) => {
     return '';
   };
 
+  // What-next suggestions, computed from what the run actually did + workspace state.
+  function nextSteps(res) {
+    const done = new Set(res.steps.map((s) => s.tool));
+    const sugg = [];
+    const site = res.steps.find((s) => s.tool === 'create_website' && s.result?.slug);
+    if (site) sugg.push(['🎨', `Polish your new site — try a different palette or edit sections`, '#/sites']);
+    const audit = res.steps.find((s) => s.tool === 'run_seo_audit');
+    if (audit && audit.result?.score != null && audit.result.score < 95) sugg.push(['🔍', `SEO scored ${audit.result.score}/100 — open the audit and clear the flagged checks`, '#/seo']);
+    if (done.has('generate_content_calendar')) sugg.push(['📣', 'Review the week of content and adjust voice or dates', '#/marketing']);
+    if (!state.boot.counts.automations) sugg.push(['🔁', 'Make this recurring — create an automation so it happens weekly without you', '#/automations']);
+    if (!sugg.length) sugg.push(['💬', 'Brief your team on what changed — ask any specialist to build on these results', '#/helpers']);
+    return sugg.slice(0, 3);
+  }
+
   let running = false; // one run at a time — a double-tap must not fire twice
-  async function run(goal) {
+  async function preview(goal) {
+    if (!goal.trim() || running) return;
+    try {
+      const plan = await api('POST', '/api/agent/plan', { goal });
+      out.innerHTML = `<div class="card">
+        <div class="row spread"><b>🧭 The plan for “${esc(goal.slice(0, 80))}”</b>
+          <span class="badge acc">${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'} · nothing run yet</span></div>
+        <div class="steps" style="margin-top:12px" id="planSteps">
+          ${plan.steps.map((s) => `
+            <div class="step" data-step-tool="${esc(s.tool)}">
+              <div class="step-n">${toolIcon[s.tool] || '•'}</div>
+              <div class="step-body"><b>${esc(s.label)}</b></div>
+            </div>`).join('')}
+        </div>
+        ${plan.mode === 'provider' ? '<p class="dim" style="margin-top:10px">⚡ Live agent mode: this is the baseline plan — the agent may add or adapt steps as it works.</p>' : ''}
+        <div class="row" style="margin-top:14px;gap:8px">
+          <button class="btn" id="runPlan">🚀 Run this plan</button>
+          <button class="btn ghost" id="editGoal">✏️ Refine the goal</button>
+        </div>
+      </div>`;
+      $('#runPlan', main).onclick = () => run(goal, plan.steps);
+      $('#editGoal', main).onclick = () => { $('#goal', main).focus(); };
+    } catch (e) { toast(e.message, true); }
+  }
+
+  async function run(goal, planned = []) {
     if (!goal.trim() || running) return;
     if (!(await brainGuard('Autopilot'))) return;
     running = true;
     $('#go', main).disabled = true; $('#go', main).textContent = '⏳ Working…';
-    out.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Autopilot is working on “${esc(goal)}”…</b></div></div>`;
+    out.innerHTML = `<div class="card">
+      <div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Autopilot is executing “${esc(goal.slice(0, 80))}”…</b></div>
+      ${planned.length ? `<div class="steps" style="margin-top:12px">
+        ${planned.map((s) => `
+          <div class="step" style="opacity:.75">
+            <div class="step-n">${toolIcon[s.tool] || '•'}</div>
+            <div class="step-body"><b>${esc(s.label)}</b><p class="muted" style="margin:4px 0 0">⏳ working…</p></div>
+          </div>`).join('')}
+      </div>` : ''}
+    </div>`;
     try {
       const res = await api('POST', '/api/agent/run', { goal });
+      const ok = res.steps.filter((s) => !s.result?.error).length;
       out.innerHTML = `<div class="card">
-        <div class="row spread"><b>✅ Autopilot finished</b><span class="badge ${res.mode === 'provider' ? 'on' : 'acc'}">${res.mode === 'provider' ? 'live agent' : 'planner'}</span></div>
+        <div class="row spread"><b>✅ Autopilot finished — ${ok}/${res.steps.length} steps completed</b><span class="badge ${res.mode === 'provider' ? 'on' : 'acc'}">${res.mode === 'provider' ? 'live agent' : 'planner'}</span></div>
         <p class="muted" style="margin:8px 0 14px">${esc(res.summary)}</p>
         <div class="steps">
-          ${res.steps.map((s, i) => `
+          ${res.steps.map((s) => `
             <div class="step">
-              <div class="step-n">${toolIcon[s.tool] || '•'}</div>
+              <div class="step-n">${s.result?.error ? '⚠️' : '✅'}</div>
               <div class="step-body">
                 <b>${esc(s.tool.replace(/_/g, ' '))}</b>${linkFor(s)}
                 <p class="muted" style="margin:4px 0 0">${s.result?.error ? '⚠️ ' + esc(s.result.error) : esc(JSON.stringify(s.result).slice(0, 180))}</p>
@@ -5075,21 +5206,26 @@ routes.autopilot = async (main) => {
             </div>`).join('')}
         </div>
         ${res.note ? `<p class="dim" style="margin-top:12px">ℹ️ ${esc(res.note)}</p>` : ''}
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+          <b>What's next</b>
+          ${nextSteps(res).map(([ic, txt, href]) => `
+            <a class="list-row" href="${href}" style="color:inherit;padding:9px 0"><span style="font-size:17px">${ic}</span><span>${txt}</span><span style="margin-left:auto" class="dim">→</span></a>`).join('')}
+        </div>
       </div>`;
       toast('Autopilot completed — results are live across your workspace 🚀');
     } catch (e) {
       out.innerHTML = `<div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div>`;
     } finally {
       running = false;
-      $('#go', main).disabled = false; $('#go', main).textContent = '🚀 Run Autopilot';
+      $('#go', main).disabled = false; $('#go', main).textContent = '🧭 Preview plan';
     }
   }
 
-  $('#go', main).onclick = () => run($('#goal', main).value);
-  $('#goal', main).addEventListener('keydown', (e) => { if (e.key === 'Enter') run(e.target.value); });
+  $('#go', main).onclick = () => preview($('#goal', main).value);
+  $('#goal', main).addEventListener('keydown', (e) => { if (e.key === 'Enter') preview(e.target.value); });
   $('.page', main).addEventListener('click', (e) => {
     const ex = e.target.closest('[data-ex]');
-    if (ex) { $('#goal', main).value = ex.dataset.ex; run(ex.dataset.ex); }
+    if (ex) { $('#goal', main).value = ex.dataset.ex; preview(ex.dataset.ex); }
   });
 };
 
@@ -5294,6 +5430,18 @@ routes.integrations = async (main) => {
 // ---------- header ticker ----------
 const tickerBiz = []; // shared by reference with the component; mutate + refresh
 let tickerRef = null;
+let tickerBusy = false;
+async function refreshTickerStats() {
+  if (!tickerRef || tickerBusy || document.hidden) return;
+  tickerBusy = true;
+  try {
+    const fresh = await api('GET', '/api/stats/ticker');
+    tickerBiz.length = 0;
+    tickerBiz.push(...fresh);
+    tickerRef.refresh(); // patches values in place; full rebuild only if the list changed
+  } catch { /* keep last values */ }
+  finally { tickerBusy = false; }
+}
 async function mountTicker() {
   if (typeof HelixTicker === 'undefined' || !$('#helix-ticker')) return;
   try { tickerBiz.push(...await api('GET', '/api/stats/ticker')); } catch { /* stats optional */ }
@@ -5303,19 +5451,7 @@ async function mountTicker() {
     businessStats: tickerBiz,
     aiSuggest: () => api('POST', '/api/stats/ticker/suggest'),
   });
-}
-let tickerTimer = null;
-function refreshTickerStats() {
-  if (!tickerRef) return;
-  clearTimeout(tickerTimer);
-  tickerTimer = setTimeout(async () => {
-    try {
-      const fresh = await api('GET', '/api/stats/ticker');
-      tickerBiz.length = 0;
-      tickerBiz.push(...fresh);
-      tickerRef.refresh();
-    } catch { /* keep last values */ }
-  }, 700);
+  setInterval(refreshTickerStats, 1000); // business stats tick every second
 }
 
 // ---------- boot ----------

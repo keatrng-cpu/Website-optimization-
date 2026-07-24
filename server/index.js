@@ -13,7 +13,7 @@ import { auditHTML, fetchAndAudit } from './seo.js';
 import { recordView, summarize } from './analytics.js';
 import { PRESETS, PRESET_MAP, redactIntegration, testIntegration, trackUsage, usageSummary } from './integrations.js';
 import { generate, makeToolCaller } from './ai.js';
-import { toolMeta, buildTools, runAgent, runPlanner, AGENT_SYSTEM } from './agent.js';
+import { toolMeta, buildTools, runAgent, runPlanner, previewPlan, AGENT_SYSTEM } from './agent.js';
 import { buildExport } from './export-site.js';
 import { runQuickstart } from './quickstart.js';
 import { learnFromMessage, recordFeedback, aiLearn, MEMORY_PROPOSAL_SYSTEM } from './memory.js';
@@ -664,6 +664,15 @@ export function createApp({ dataDir } = {}) {
       sendJSON(res, 200, { tool, result });
     } catch (e) { sendJSON(res, 400, { error: e.message }); }
   });
+  // Dry-run: show what the planner would do, executing nothing.
+  router.post('/api/agent/plan', async (req, res) => {
+    const { goal: rawGoal } = await readBody(req);
+    if (!rawGoal || !String(rawGoal).trim()) return bad(res, 'goal is required');
+    const st = S().settings;
+    const live = st.provider !== 'offline' && (st.provider === 'ollama' || !!st.apiKey);
+    sendJSON(res, 200, { steps: previewPlan(agentCtx(), clean(rawGoal, 2000)), mode: live ? 'provider' : 'planner' });
+  });
+  router.get('/api/agent/runs', (req, res) => sendJSON(res, 200, S().agentRuns || []));
   router.post('/api/agent/run', async (req, res) => {
     const { goal: rawGoal } = await readBody(req);
     if (!rawGoal || !String(rawGoal).trim()) return bad(res, 'goal is required');
@@ -682,8 +691,10 @@ export function createApp({ dataDir } = {}) {
       } else {
         out = await runPlanner(ctx, { goal: String(goal) });
       }
-      // record what Autopilot did to the inbox
-      S().inbox.unshift({ id: uid(), title: `Autopilot ran: “${String(goal).slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, createdAt: Date.now() });
+      // record the run (history for the Autopilot page) and notify the inbox
+      const run = { id: uid(), goal: String(goal), mode: out.mode, summary: out.summary, steps: out.steps, createdAt: Date.now() };
+      S().agentRuns = [run, ...(S().agentRuns || [])].slice(0, 20);
+      S().inbox.unshift({ id: uid(), title: `Autopilot ran: “${String(goal).slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, link: '#/autopilot', createdAt: Date.now() });
       store.save();
       sendJSON(res, 200, out);
     } catch (e) { sendJSON(res, 500, { error: e.message }); }

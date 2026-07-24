@@ -31,6 +31,7 @@ const DEFAULTS = () => ({
   memories: [],    // { id, text, kind: fact|preference|goal, source, learnedAt, pinned }
   feedback: {},    // per-helper { up, down } reply-rating counters
   usageLog: [],    // bounded recent API-call metadata (never keys or bodies)
+  agentRuns: [],   // { id, goal, mode, summary, steps, createdAt } — bounded 20
   settings: {
     provider: 'offline', // offline | anthropic | openai | ollama
     apiKey: '',

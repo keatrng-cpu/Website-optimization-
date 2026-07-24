@@ -57,7 +57,7 @@ export async function runQuickstart(ctx, { name, description }) {
   s.inbox.unshift({
     id: uid(), title: 'Quick Start finished — your business scaffold is live',
     body: `Website /sites/${site.slug} (SEO ${audit.score}/100), 7 posts drafted, weekly automation running.`,
-    from: 'vizzy', read: false, documentId: null, createdAt: Date.now(),
+    from: 'vizzy', read: false, documentId: null, link: '#/sites', createdAt: Date.now(),
   });
   ctx.store.save();
 

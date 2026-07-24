@@ -18,9 +18,9 @@ function detectIntent(text) {
   const has = (...ws) => ws.some((w) => t.includes(w));
   if (has('subject line', 'email', 'newsletter', 'drip', 'sequence')) return 'email';
   if (has('social', 'post', 'instagram', 'linkedin', 'tiktok', 'tweet', 'caption', 'hashtag')) return 'social';
-  if (has('seo', 'keyword', 'rank', 'meta description', 'search')) return 'seo';
+  if (has('sales', 'cold', 'outreach', 'pitch', 'objection', 'close', 'proposal', 'call script', 'discovery questions')) return 'sales';
+  if (has('seo', 'keyword', 'rank', 'meta description', 'search engine', 'serp', 'organic search')) return 'seo';
   if (has('landing', 'headline', 'copy', 'tagline', 'slogan', 'ad ')) return 'copy';
-  if (has('sales', 'cold', 'outreach', 'pitch', 'objection', 'close', 'proposal')) return 'sales';
   if (has('support', 'refund', 'complaint', 'apolog', 'faq', 'help article')) return 'support';
   if (has('job', 'hire', 'hiring', 'candidate', 'interview', 'recruit')) return 'recruiting';
   if (has('kpi', 'metric', 'report', 'analyz', 'analys', 'data', 'forecast', 'a/b')) return 'data';

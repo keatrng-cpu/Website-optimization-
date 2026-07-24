@@ -183,6 +183,20 @@ var HelixTicker = (function(){
   }
   function rebuild(){ render(); }
 
+  // Fast path for frequent refreshes: patch values into the existing DOM.
+  // A full render() would restart the marquee animation and rebuild the menu,
+  // so it is reserved for when the stat LIST itself changes.
+  function statSig(){ return state.stats.map(function(s){ return s.id + '|' + s.label; }).join(','); }
+  function patchValues(){
+    var byId = {};
+    state.stats.forEach(function(s){ byId[s.id] = s; });
+    state.host.querySelectorAll('.hx-stat[data-id]').forEach(function(n){
+      var s = byId[n.getAttribute('data-id')];
+      if (!s) return;
+      n.innerHTML = '<span class="k">'+esc(s.label)+'</span><span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct);
+    });
+  }
+
   function mount(sel, opts){
     state.host = typeof sel === 'string' ? document.querySelector(sel) : sel;
     state.opts = opts || {};
@@ -202,7 +216,15 @@ var HelixTicker = (function(){
           .catch(function(){});
       }, Math.max(60000, state.opts.refreshMs));
     }
-    return { refresh: function(){ assemble(); render(); } };
+    return { refresh: function(){
+      var before = statSig();
+      assemble();
+      if (statSig() === before) { patchValues(); return; }
+      // list changed — full rebuild, unless the prefs menu is open (it would
+      // be wiped mid-interaction; the next refresh after closing catches up)
+      var menu = state.host.querySelector('#hxMenu');
+      if (!(menu && menu.classList.contains('open'))) render();
+    } };
   }
   return { mount: mount };
 })();

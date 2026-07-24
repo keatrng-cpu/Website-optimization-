@@ -57,7 +57,7 @@ function md(text) {
     const head = cells(rows[0]);
     const body = rows.slice(rows[1].match(/^\|[\s\-:|]+\|$/) ? 2 : 1);
     return `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${
-      body.map((r) => `<tr>${cells(r).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      body.map((r) => `<tr>${cells(r).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>\n`;
   });
   const lines = t.split('\n');
   const out = [];
@@ -225,7 +225,15 @@ routes.dashboard = async (main) => {
   const brain = brainRes.brain;
   const setup = !!brain.businessName;
   const open = tasks.filter((t) => t.status !== 'done').length;
+  // "Since you last looked" — computed from real timestamps, shown only when something happened.
+  const lastSeen = Number(localStorage.getItem('hx_last_seen') || 0);
+  const newInbox = lastSeen ? inbox.filter((i) => i.createdAt > lastSeen).length : 0;
+  const newDocs = lastSeen ? docs.filter((d) => d.createdAt > lastSeen).length : 0;
+  const sinceBits = [];
+  if (newInbox) sinceBits.push(`${newInbox} new result${newInbox === 1 ? '' : 's'} in your <a href="#/inbox">inbox</a>`);
+  if (newDocs) sinceBits.push(`${newDocs} new <a href="#/documents">document${newDocs === 1 ? '' : 's'}</a>`);
   main.innerHTML = `<div class="page">
+    ${sinceBits.length ? `<div class="since-band" id="sinceBand">◆ <b>Since you last looked</b><span>${sinceBits.join(' · ')}</span><button class="dismiss" id="sinceDismiss">dismiss</button></div>` : ''}
     <div class="page-head">
       <div><h1>${setup ? `Welcome back, ${esc(brain.businessName)}` : 'Welcome to HELIX'}</h1>
       <p>Your 12-person AI team is on the clock. ${setup ? 'Here’s where things stand.' : 'Describe your business once — get a website, content, and automations in about a minute.'}</p></div>
@@ -256,7 +264,7 @@ routes.dashboard = async (main) => {
           ${inbox.length ? inbox.slice(0, 5).map((i) => `
             <div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
               <div class="row spread"><b style="font-size:13px">${esc(i.title)}</b>${i.read ? '' : '<span class="badge acc">new</span>'}</div>
-              <div class="dim">${timeAgo(i.createdAt)}${i.documentId ? ` · <a href="#/documents/${i.documentId}">open</a>` : ''}</div>
+              <div class="dim">${timeAgo(i.createdAt)} · <a href="${i.documentId ? `#/documents/${i.documentId}` : (i.link || '#/inbox')}">open</a></div>
             </div>`).join('')
           : '<p class="dim" style="margin-top:8px">Nothing yet — run an automation or a power-up and results land here.</p>'}
         </div>
@@ -269,6 +277,9 @@ routes.dashboard = async (main) => {
       </div>
     </div>
   </div>`;
+  localStorage.setItem('hx_last_seen', String(Date.now()));
+  const band = $('#sinceDismiss', main);
+  if (band) band.onclick = () => $('#sinceBand', main).remove();
 };
 
 routes.helpers = async (main) => {
@@ -575,7 +586,7 @@ routes.inbox = async (main) => {
   main.innerHTML = `<div class="page">
     <div class="page-head"><div><h1>📥 Inbox</h1><p>Results from automations and your AI team land here.</p></div></div>
     ${inbox.length ? `<div class="card pad0">${inbox.map((i) => `
-      <a class="list-row" href="${i.documentId ? `#/documents/${i.documentId}` : '#'}" style="color:inherit">
+      <a class="list-row" href="${i.documentId ? `#/documents/${i.documentId}` : (i.link || '#/automations')}" style="color:inherit">
         ${state.helperMap[i.from] ? `<span class="avatar sm" style="background:${state.helperMap[i.from].color}22">${state.helperMap[i.from].emoji}</span>` : '📄'}
         <span style="flex:1"><b>${esc(i.title)}</b><div class="dim">${esc(i.body)}…</div></span>
         <span class="dim">${timeAgo(i.createdAt)}</span>
@@ -1270,6 +1281,7 @@ routes.autopilot = async (main) => {
     'Set up a sales push: script, outreach plan, and follow-up tasks',
     'Get me online: build and audit a website for my business',
   ];
+  const runs = await api('GET', '/api/agent/runs').catch(() => []);
   main.innerHTML = `<div class="page">
     <div class="hero-band" style="margin-bottom:22px">
       <div class="eyebrow">Autopilot</div>
@@ -1277,7 +1289,7 @@ routes.autopilot = async (main) => {
       <p class="lede">Describe an outcome and Autopilot breaks it into steps and <em>actually executes them</em> — creating tasks, building sites, running audits, generating content, and calling your connected tools. Not advice. Done work.</p>
       <div class="row" style="gap:8px;margin-top:4px">
         <input id="goal" placeholder="e.g. ${esc(examples[0])}" style="flex:1;min-width:260px" value="">
-        <button class="btn" id="go">🚀 Run Autopilot</button>
+        <button class="btn" id="go">🧭 Preview plan</button>
       </div>
       <div class="row" style="gap:6px;margin-top:12px;flex-wrap:wrap">
         ${examples.map((e) => `<button class="chip" data-ex="${esc(e)}">${esc(e)}</button>`).join('')}
@@ -1289,6 +1301,16 @@ routes.autopilot = async (main) => {
       </div>
     </div>
     <div id="runOut"></div>
+    ${runs.length ? `
+    <div class="card" style="margin-top:20px">
+      <b>Previous runs</b>
+      ${runs.slice(0, 5).map((r) => `
+        <details style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <summary style="cursor:pointer"><b style="font-size:13px">${esc(r.goal.slice(0, 90))}</b>
+            <span class="dim"> · ${r.steps.length} step${r.steps.length === 1 ? '' : 's'} · ${timeAgo(r.createdAt)}</span></summary>
+          <p class="muted" style="margin:8px 0 0;font-size:13px">${esc(r.summary)}</p>
+        </details>`).join('')}
+    </div>` : ''}
     <details style="margin-top:20px">
       <summary class="dim" style="cursor:pointer">What can Autopilot do? (${toolCount} tools)</summary>
       <div class="grid c2" style="margin-top:12px">
@@ -1309,22 +1331,71 @@ routes.autopilot = async (main) => {
     return '';
   };
 
+  // What-next suggestions, computed from what the run actually did + workspace state.
+  function nextSteps(res) {
+    const done = new Set(res.steps.map((s) => s.tool));
+    const sugg = [];
+    const site = res.steps.find((s) => s.tool === 'create_website' && s.result?.slug);
+    if (site) sugg.push(['🎨', `Polish your new site — try a different palette or edit sections`, '#/sites']);
+    const audit = res.steps.find((s) => s.tool === 'run_seo_audit');
+    if (audit && audit.result?.score != null && audit.result.score < 95) sugg.push(['🔍', `SEO scored ${audit.result.score}/100 — open the audit and clear the flagged checks`, '#/seo']);
+    if (done.has('generate_content_calendar')) sugg.push(['📣', 'Review the week of content and adjust voice or dates', '#/marketing']);
+    if (!state.boot.counts.automations) sugg.push(['🔁', 'Make this recurring — create an automation so it happens weekly without you', '#/automations']);
+    if (!sugg.length) sugg.push(['💬', 'Brief your team on what changed — ask any specialist to build on these results', '#/helpers']);
+    return sugg.slice(0, 3);
+  }
+
   let running = false; // one run at a time — a double-tap must not fire twice
-  async function run(goal) {
+  async function preview(goal) {
+    if (!goal.trim() || running) return;
+    try {
+      const plan = await api('POST', '/api/agent/plan', { goal });
+      out.innerHTML = `<div class="card">
+        <div class="row spread"><b>🧭 The plan for “${esc(goal.slice(0, 80))}”</b>
+          <span class="badge acc">${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'} · nothing run yet</span></div>
+        <div class="steps" style="margin-top:12px" id="planSteps">
+          ${plan.steps.map((s) => `
+            <div class="step" data-step-tool="${esc(s.tool)}">
+              <div class="step-n">${toolIcon[s.tool] || '•'}</div>
+              <div class="step-body"><b>${esc(s.label)}</b></div>
+            </div>`).join('')}
+        </div>
+        ${plan.mode === 'provider' ? '<p class="dim" style="margin-top:10px">⚡ Live agent mode: this is the baseline plan — the agent may add or adapt steps as it works.</p>' : ''}
+        <div class="row" style="margin-top:14px;gap:8px">
+          <button class="btn" id="runPlan">🚀 Run this plan</button>
+          <button class="btn ghost" id="editGoal">✏️ Refine the goal</button>
+        </div>
+      </div>`;
+      $('#runPlan', main).onclick = () => run(goal, plan.steps);
+      $('#editGoal', main).onclick = () => { $('#goal', main).focus(); };
+    } catch (e) { toast(e.message, true); }
+  }
+
+  async function run(goal, planned = []) {
     if (!goal.trim() || running) return;
     if (!(await brainGuard('Autopilot'))) return;
     running = true;
     $('#go', main).disabled = true; $('#go', main).textContent = '⏳ Working…';
-    out.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Autopilot is working on “${esc(goal)}”…</b></div></div>`;
+    out.innerHTML = `<div class="card">
+      <div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Autopilot is executing “${esc(goal.slice(0, 80))}”…</b></div>
+      ${planned.length ? `<div class="steps" style="margin-top:12px">
+        ${planned.map((s) => `
+          <div class="step" style="opacity:.75">
+            <div class="step-n">${toolIcon[s.tool] || '•'}</div>
+            <div class="step-body"><b>${esc(s.label)}</b><p class="muted" style="margin:4px 0 0">⏳ working…</p></div>
+          </div>`).join('')}
+      </div>` : ''}
+    </div>`;
     try {
       const res = await api('POST', '/api/agent/run', { goal });
+      const ok = res.steps.filter((s) => !s.result?.error).length;
       out.innerHTML = `<div class="card">
-        <div class="row spread"><b>✅ Autopilot finished</b><span class="badge ${res.mode === 'provider' ? 'on' : 'acc'}">${res.mode === 'provider' ? 'live agent' : 'planner'}</span></div>
+        <div class="row spread"><b>✅ Autopilot finished — ${ok}/${res.steps.length} steps completed</b><span class="badge ${res.mode === 'provider' ? 'on' : 'acc'}">${res.mode === 'provider' ? 'live agent' : 'planner'}</span></div>
         <p class="muted" style="margin:8px 0 14px">${esc(res.summary)}</p>
         <div class="steps">
-          ${res.steps.map((s, i) => `
+          ${res.steps.map((s) => `
             <div class="step">
-              <div class="step-n">${toolIcon[s.tool] || '•'}</div>
+              <div class="step-n">${s.result?.error ? '⚠️' : '✅'}</div>
               <div class="step-body">
                 <b>${esc(s.tool.replace(/_/g, ' '))}</b>${linkFor(s)}
                 <p class="muted" style="margin:4px 0 0">${s.result?.error ? '⚠️ ' + esc(s.result.error) : esc(JSON.stringify(s.result).slice(0, 180))}</p>
@@ -1332,21 +1403,26 @@ routes.autopilot = async (main) => {
             </div>`).join('')}
         </div>
         ${res.note ? `<p class="dim" style="margin-top:12px">ℹ️ ${esc(res.note)}</p>` : ''}
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+          <b>What's next</b>
+          ${nextSteps(res).map(([ic, txt, href]) => `
+            <a class="list-row" href="${href}" style="color:inherit;padding:9px 0"><span style="font-size:17px">${ic}</span><span>${txt}</span><span style="margin-left:auto" class="dim">→</span></a>`).join('')}
+        </div>
       </div>`;
       toast('Autopilot completed — results are live across your workspace 🚀');
     } catch (e) {
       out.innerHTML = `<div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div>`;
     } finally {
       running = false;
-      $('#go', main).disabled = false; $('#go', main).textContent = '🚀 Run Autopilot';
+      $('#go', main).disabled = false; $('#go', main).textContent = '🧭 Preview plan';
     }
   }
 
-  $('#go', main).onclick = () => run($('#goal', main).value);
-  $('#goal', main).addEventListener('keydown', (e) => { if (e.key === 'Enter') run(e.target.value); });
+  $('#go', main).onclick = () => preview($('#goal', main).value);
+  $('#goal', main).addEventListener('keydown', (e) => { if (e.key === 'Enter') preview(e.target.value); });
   $('.page', main).addEventListener('click', (e) => {
     const ex = e.target.closest('[data-ex]');
-    if (ex) { $('#goal', main).value = ex.dataset.ex; run(ex.dataset.ex); }
+    if (ex) { $('#goal', main).value = ex.dataset.ex; preview(ex.dataset.ex); }
   });
 };
 
@@ -1551,6 +1627,18 @@ routes.integrations = async (main) => {
 // ---------- header ticker ----------
 const tickerBiz = []; // shared by reference with the component; mutate + refresh
 let tickerRef = null;
+let tickerBusy = false;
+async function refreshTickerStats() {
+  if (!tickerRef || tickerBusy || document.hidden) return;
+  tickerBusy = true;
+  try {
+    const fresh = await api('GET', '/api/stats/ticker');
+    tickerBiz.length = 0;
+    tickerBiz.push(...fresh);
+    tickerRef.refresh(); // patches values in place; full rebuild only if the list changed
+  } catch { /* keep last values */ }
+  finally { tickerBusy = false; }
+}
 async function mountTicker() {
   if (typeof HelixTicker === 'undefined' || !$('#helix-ticker')) return;
   try { tickerBiz.push(...await api('GET', '/api/stats/ticker')); } catch { /* stats optional */ }
@@ -1560,19 +1648,7 @@ async function mountTicker() {
     businessStats: tickerBiz,
     aiSuggest: () => api('POST', '/api/stats/ticker/suggest'),
   });
-}
-let tickerTimer = null;
-function refreshTickerStats() {
-  if (!tickerRef) return;
-  clearTimeout(tickerTimer);
-  tickerTimer = setTimeout(async () => {
-    try {
-      const fresh = await api('GET', '/api/stats/ticker');
-      tickerBiz.length = 0;
-      tickerBiz.push(...fresh);
-      tickerRef.refresh();
-    } catch { /* keep last values */ }
-  }, 700);
+  setInterval(refreshTickerStats, 1000); // business stats tick every second
 }
 
 // ---------- boot ----------

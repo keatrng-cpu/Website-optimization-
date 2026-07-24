@@ -485,7 +485,38 @@ test('agent: offline planner autonomously produces real artifacts', async () => 
   const cal = await api('GET', '/api/calendar');
   assert.ok(cal.data.length >= 7, 'real posts were generated');
   const inbox = await api('GET', '/api/inbox');
-  assert.ok(inbox.data.some((i) => i.title.startsWith('Autopilot ran')), 'autopilot logged to inbox');
+  const note = inbox.data.find((i) => i.title.startsWith('Autopilot ran'));
+  assert.ok(note, 'autopilot logged to inbox');
+  assert.equal(note.link, '#/autopilot', 'inbox notification deep-links back to Autopilot');
+
+  const runs = await api('GET', '/api/agent/runs');
+  assert.ok(runs.data.length >= 1, 'run recorded in history');
+  assert.equal(runs.data[0].goal, 'Launch my new product with a website and social content');
+  assert.ok(Array.isArray(runs.data[0].steps));
+});
+
+test('agent: plan preview executes nothing', async () => {
+  const docsBefore = (await api('GET', '/api/documents')).data.length;
+  const sitesBefore = (await api('GET', '/api/sites')).data.length;
+  const plan = await api('POST', '/api/agent/plan', { goal: 'Set up a sales push: script, outreach plan, and follow-up tasks' });
+  assert.equal(plan.status, 200);
+  assert.ok(plan.data.steps.length >= 1, 'plan has steps');
+  assert.ok(plan.data.steps.every((s) => s.label && s.tool), 'every step is human-labeled');
+  assert.ok(plan.data.steps.some((s) => s.args?.powerupId === 'sales-script'), 'sales goal plans a sales script, not an SEO brief');
+  assert.equal((await api('GET', '/api/documents')).data.length, docsBefore, 'preview created no documents');
+  assert.equal((await api('GET', '/api/sites')).data.length, sitesBefore, 'preview created no sites');
+});
+
+test('offline: a sales call script request routes to the sales generator', async () => {
+  const { offlineGenerate } = await import('../server/offline.js');
+  const outText = offlineGenerate({
+    helper: { id: 'milli', name: 'Milli', role: 'Sales Manager' },
+    brain: { businessName: 'VitaForge Holdings' },
+    message: 'Write a complete sales call script for selling: search north dakota markets — opening, discovery questions, pitch, objection handling, and close.',
+  });
+  const t = (typeof outText === 'string' ? outText : JSON.stringify(outText)).toLowerCase();
+  assert.ok(!t.includes('seo action brief'), 'must not answer a sales request with an SEO brief');
+  assert.ok(/objection|discovery|call/.test(t), 'reply is sales-flavored');
 });
 
 test('agent: call_integration makes a real authenticated request', async () => {

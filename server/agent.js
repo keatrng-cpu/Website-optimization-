@@ -174,7 +174,7 @@ export async function runAgent(ctx, { goal, callModel, maxSteps = 8 }) {
 
 // Deterministic offline planner: maps a goal to a real sequence of tool calls.
 // No LLM required — autonomy that works with zero keys.
-export async function runPlanner(ctx, { goal }) {
+export function buildPlan(ctx, goal) {
   const g = String(goal || '').toLowerCase();
   const has = (...ws) => ws.some((w) => g.includes(w));
   const plan = [];
@@ -197,7 +197,7 @@ export async function runPlanner(ctx, { goal }) {
   if (has('sell', 'sales', 'revenue', 'pipeline', 'outreach')) {
     plan.push(['run_powerup', { powerupId: 'sales-script', inputs: { offer: goal } }]);
   }
-  if (has('seo', 'rank', 'search', 'traffic')) {
+  if (has('seo', 'rank', 'search engine', 'serp', 'traffic')) {
     plan.push(['run_powerup', { powerupId: 'seo-brief', inputs: { topic: goal } }]);
   }
   // sensible default so any goal produces real output
@@ -208,13 +208,34 @@ export async function runPlanner(ctx, { goal }) {
 
   // dedupe identical steps within a run (e.g. two branches both adding an audit)
   const seen = new Set();
-  const deduped = plan.filter(([tool, args]) => {
+  return plan.filter(([tool, args]) => {
     const key = tool + JSON.stringify(args);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
 
+// Human-readable one-liners so the UI can show the plan before anything runs.
+const STEP_LABELS = {
+  create_task: (a) => `Create task: “${a.title || 'follow-up'}”`,
+  run_powerup: (a) => `Generate a ${String(a.powerupId || 'deliverable').replace(/-/g, ' ')}`,
+  create_website: (a) => `Build & publish a website for ${a.name || 'the business'}`,
+  run_seo_audit: () => 'Run a full SEO audit',
+  generate_content_calendar: () => 'Plan a week of social content',
+  draft_email_campaign: () => 'Draft an email campaign',
+  call_integration: (a) => `Call connected integration: ${a.id || ''}`,
+  get_workspace_summary: () => 'Review the workspace',
+};
+
+export function previewPlan(ctx, goal) {
+  return buildPlan(ctx, goal).map(([tool, args]) => ({
+    tool, args, label: (STEP_LABELS[tool] || (() => tool.replace(/_/g, ' ')))(args),
+  }));
+}
+
+export async function runPlanner(ctx, { goal }) {
+  const deduped = buildPlan(ctx, goal);
   const steps = [];
   for (const [tool, args] of deduped) {
     let result;
