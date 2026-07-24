@@ -138,6 +138,20 @@ export function workspaceContext(state) {
   if (conn.length) {
     lines.push(`Connected integrations: ${conn.map((i) => i.name).join(', ')}. You may suggest using these to fetch data or push results.`);
   }
+  // Learned memories: durable facts/preferences/goals the user actually stated.
+  const mems = (state.memories || []);
+  if (mems.length) {
+    const top = [...mems].sort((a, b) => (b.pinned - a.pinned) || (b.learnedAt - a.learnedAt)).slice(0, 12);
+    lines.push('Learned memories (the user said these — honor them):');
+    for (const m of top) lines.push(`- [${m.kind}] ${m.text}`);
+  }
+  // Feedback learning: reply-rating counters, computed in code.
+  const fb = state.feedback || {};
+  const rated = Object.entries(fb).filter(([, v]) => v.up + v.down > 0);
+  if (rated.length) {
+    lines.push('Reply feedback so far: ' + rated.map(([h, v]) => `${h} ${v.up}👍/${v.down}👎`).join(', ') +
+      '. If a helper has more 👎 than 👍, change approach: be more specific, shorter, and more concrete.');
+  }
   return lines.join('\n');
 }
 

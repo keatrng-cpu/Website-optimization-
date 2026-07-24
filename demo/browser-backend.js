@@ -13,7 +13,8 @@ const DEFAULTS = () => ({
     tone: 'friendly and professional', products: '', goals: '', website: '', location: '',
   },
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
-  sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [],
+  sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
+  feedback: {},
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -161,6 +162,20 @@ async function handle(method, pathname, query, body) {
       });
 
     case 'brain': {
+      if (p[1] === 'memories') {
+        const mem = db.memories.find((m) => m.id === p[2]);
+        if (!mem) return notFound();
+        if (method === 'PATCH') {
+          if (body.pinned !== undefined) mem.pinned = !!body.pinned;
+          if (body.text !== undefined && String(body.text).trim()) mem.text = clean(body.text, 220);
+          save();
+          return ok(mem);
+        }
+        if (method === 'DELETE') {
+          db.memories.splice(db.memories.indexOf(mem), 1); save();
+          return ok({ ok: true });
+        }
+      }
       if (p[1] === 'knowledge') {
         if (method === 'POST') {
           if (!body.title || !body.content) return bad('title and content are required');
@@ -175,7 +190,7 @@ async function handle(method, pathname, query, body) {
           return ok({ ok: true });
         }
       }
-      if (method === 'GET') return ok({ brain: db.brain, knowledge: db.knowledge });
+      if (method === 'GET') return ok({ brain: db.brain, knowledge: db.knowledge, memories: db.memories });
       if (method === 'PUT') {
         for (const k of ['businessName', 'tagline', 'industry', 'description', 'audience', 'tone', 'products', 'goals', 'website', 'location']) {
           if (k in body) db.brain[k] = String(body[k] ?? '');
@@ -204,11 +219,21 @@ async function handle(method, pathname, query, body) {
         if (!body.content || !String(body.content).trim()) return bad('content is required');
         const _c = clean(String(body.content));
         chat.messages.push({ role: 'user', content: _c, at: Date.now() });
+        const learned = learnFromMessage(db, _c, `chat with ${HELPER_MAP[chat.helperId]?.name || chat.helperId}`);
         if (chat.messages.length === 1) chat.title = _c.slice(0, 60);
         const { text, engine } = await ask(chat.helperId, _c);
         const reply = { role: 'assistant', content: text, at: Date.now(), engine };
         chat.messages.push(reply); save();
-        return ok({ reply, chat: { id: chat.id, title: chat.title } });
+        return ok({ reply, chat: { id: chat.id, title: chat.title }, learned: learned.map((m) => m.text) });
+      }
+      if (p[2] === 'feedback' && method === 'POST') {
+        const msg = chat.messages[Number(body.index)];
+        if (!msg || msg.role !== 'assistant') return bad('index must point at an assistant reply');
+        if (!['up', 'down'].includes(body.rating)) return bad('rating must be up or down');
+        msg.rating = body.rating;
+        const totals = recordFeedback(db, chat.helperId, body.rating);
+        save();
+        return ok({ ok: true, helperId: chat.helperId, totals });
       }
       if (method === 'GET') return ok(chat);
       if (method === 'DELETE') {

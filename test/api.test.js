@@ -708,6 +708,76 @@ test('edge: expanded palette catalog includes light theme', async () => {
   await api('DELETE', `/api/sites/${site.data.id}`);
 });
 
+test('brain learning: deterministic memory extraction', async () => {
+  const { extractMemories } = await import('../server/memory.js');
+  const found = extractMemories(
+    'We never discount below 10%. What should I post today? Our best seller is the Ethiopia roast. I prefer short punchy copy with no emojis. We plan to launch subscriptions by March.'
+  );
+  const texts = found.map((f) => f.text);
+  assert.ok(texts.some((t) => t.includes('never discount below 10%')), 'preference captured');
+  assert.ok(texts.some((t) => t.includes('best seller')), 'fact captured');
+  assert.ok(texts.some((t) => t.includes('launch subscriptions')), 'goal captured');
+  assert.ok(!texts.some((t) => t.includes('What should I post')), 'questions are not memories');
+  const kinds = Object.fromEntries(found.map((f) => [f.text.slice(0, 12), f.kind]));
+  assert.equal(found.find((f) => f.text.includes('no emojis')).kind, 'preference');
+  assert.equal(found.find((f) => f.text.includes('launch')).kind, 'goal');
+});
+
+test('brain learning: chat teaches the Brain, memory is visible, editable, and used', async () => {
+  const chat = await api('POST', '/api/chats', { helperId: 'milli' });
+  const msg = await api('POST', `/api/chats/${chat.data.id}/messages`, {
+    content: 'We never discount below 10% because our margins depend on it. Write me a sales pitch.',
+  });
+  assert.ok(msg.data.learned.some((t) => t.includes('never discount')), 'reply reports what was learned');
+
+  const brain = await api('GET', '/api/brain');
+  const mem = brain.data.memories.find((m) => m.text.includes('never discount'));
+  assert.ok(mem, 'memory visible in the Brain');
+  assert.equal(mem.kind, 'preference');
+
+  // dedupe: repeating the same statement doesn't duplicate
+  await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'We never discount below 10% because our margins depend on it.' });
+  const again = await api('GET', '/api/brain');
+  assert.equal(again.data.memories.filter((m) => m.text.includes('never discount')).length, 1);
+
+  // memory is injected into system prompts (the learning is actually used)
+  const { systemPrompt } = await import('../server/helpers.js');
+  const state = { tasks: [], sites: [], seoAudits: [], documents: [], calendar: [], automations: [], integrations: [], memories: again.data.memories, feedback: {} };
+  const sp = systemPrompt({ prompt: 'x', id: 'milli', name: 'Milli' }, { businessName: 'X' }, [], state);
+  assert.ok(sp.includes('never discount below 10%'), 'learned memory reaches the model');
+
+  // offline engine surfaces the relevant memory to the user
+  const reply2 = await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'Should we offer a bigger discount to close deals faster?' });
+  assert.ok(/never discount|Remembering/i.test(reply2.data.reply.content), 'offline reply references the learned rule');
+
+  // pin + forget
+  const pinned = await api('PATCH', `/api/brain/memories/${mem.id}`, { pinned: true });
+  assert.equal(pinned.data.pinned, true);
+  await api('DELETE', `/api/brain/memories/${mem.id}`);
+  const gone = await api('GET', '/api/brain');
+  assert.ok(!gone.data.memories.some((m) => m.id === mem.id));
+  await api('DELETE', `/api/chats/${chat.data.id}`);
+});
+
+test('brain learning: reply feedback is recorded and reaches prompts', async () => {
+  const chat = await api('POST', '/api/chats', { helperId: 'penn' });
+  await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'Give me a tagline idea' });
+  const fb = await api('POST', `/api/chats/${chat.data.id}/feedback`, { index: 1, rating: 'up' });
+  assert.equal(fb.status, 200);
+  assert.equal(fb.data.totals.up, 1);
+
+  const full = await api('GET', `/api/chats/${chat.data.id}`);
+  assert.equal(full.data.messages[1].rating, 'up', 'rating persisted on the message');
+
+  const badIdx = await api('POST', `/api/chats/${chat.data.id}/feedback`, { index: 0, rating: 'up' });
+  assert.equal(badIdx.status, 400, 'user messages cannot be rated');
+
+  const { workspaceContext } = await import('../server/helpers.js');
+  const ctx = workspaceContext({ tasks: [], sites: [], seoAudits: [], documents: [], calendar: [], automations: [], integrations: [], memories: [], feedback: { penn: { up: 1, down: 0 } } });
+  assert.ok(ctx.includes('penn 1👍/0👎'), 'feedback counters reach the prompt');
+  await api('DELETE', `/api/chats/${chat.data.id}`);
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

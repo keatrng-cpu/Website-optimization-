@@ -330,13 +330,28 @@ routes.chat = async (main, [helperId, chatId]) => {
   const chatList = $('#chatList', main);
   function renderMsgs() {
     if (!chat) return;
-    msgs.innerHTML = chat.messages.map((m) => `
+    msgs.innerHTML = chat.messages.map((m, i) => `
       <div class="msg ${m.role}">
-        <div class="meta">${m.role === 'user' ? 'You' : `${helper.emoji} ${helper.name}${m.engine === 'offline' ? ' · offline engine' : ''}`}</div>
+        <div class="meta">${m.role === 'user' ? 'You' : `${helper.emoji} ${helper.name}${m.engine === 'offline' ? ' · offline engine' : m.engine === 'gateway' ? ' · live AI' : ''}`}</div>
         ${m.role === 'user' ? `<div>${esc(m.content)}</div>` : md(m.content)}
+        ${m.role === 'assistant' ? `<div class="row" style="gap:4px;margin-top:8px">
+          <button class="fb ${m.rating === 'up' ? 'on' : ''}" data-fb="${i}:up" title="Helpful — teach the team">👍</button>
+          <button class="fb ${m.rating === 'down' ? 'on' : ''}" data-fb="${i}:down" title="Off — teach the team">👎</button>
+        </div>` : ''}
       </div>`).join('');
     msgs.scrollTop = msgs.scrollHeight;
   }
+  msgs.addEventListener('click', async (e) => {
+    const fb = e.target.closest('[data-fb]');
+    if (!fb || !chat) return;
+    const [index, rating] = fb.dataset.fb.split(':');
+    try {
+      await api('POST', `/api/chats/${chat.id}/feedback`, { index: Number(index), rating });
+      chat.messages[Number(index)].rating = rating;
+      renderMsgs();
+      toast(rating === 'up' ? 'Noted — the team learns what works 🧬' : 'Noted — the team will adjust 🧬');
+    } catch (err) { toast(err.message, true); }
+  });
   renderMsgs();
 
   chatList.addEventListener('click', (e) => {
@@ -356,10 +371,11 @@ routes.chat = async (main, [helperId, chatId]) => {
       renderMsgs();
       msgs.insertAdjacentHTML('beforeend', `<div class="msg assistant" data-typing><div class="typing"><i></i><i></i><i></i></div></div>`);
       msgs.scrollTop = msgs.scrollHeight;
-      const { reply } = await api('POST', `/api/chats/${chat.id}/messages`, { content });
+      const { reply, learned } = await api('POST', `/api/chats/${chat.id}/messages`, { content });
       $('[data-typing]', msgs)?.remove();
       chat.messages.push(reply);
       renderMsgs();
+      if (learned?.length) toast(`🧬 Learned: “${learned[0].slice(0, 60)}${learned[0].length > 60 ? '…' : ''}”`);
       if (chat.messages.length === 2) {
         history.replaceState(null, '', `#/chat/${helperId}/${chat.id}`);
         // show the new conversation in the sidebar list immediately
@@ -386,7 +402,8 @@ routes.chat = async (main, [helperId, chatId]) => {
 };
 
 routes.brain = async (main) => {
-  const { brain, knowledge } = await api('GET', '/api/brain');
+  const { brain, knowledge, memories = [] } = await api('GET', '/api/brain');
+  const kindBadge = { preference: '<span class="badge acc">preference</span>', goal: '<span class="badge warn">goal</span>', fact: '<span class="badge">fact</span>' };
   const F = (key, label, ph, textarea = false) => `
     <label>${label}</label>
     ${textarea
@@ -422,6 +439,24 @@ routes.brain = async (main) => {
               </div>`).join('') : '<p class="dim" style="margin-top:10px">Empty — add your first knowledge item.</p>'}
           </div>
         </div>
+        <div class="card" style="margin-top:14px">
+          <div class="row spread"><b>🧬 Learned memories</b><span class="badge">${memories.length}</span></div>
+          <p class="dim" style="margin:6px 0 4px">Your team learns as you chat: first-person facts, preferences, and goals you state are remembered automatically — fully visible here, pin the important ones, delete anything.</p>
+          <div>
+            ${memories.length ? memories.slice(0, 30).map((m) => `
+              <div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
+                <div class="row spread" style="align-items:flex-start">
+                  <span style="font-size:13px;flex:1">${m.pinned ? '📌 ' : ''}${esc(m.text)}</span>
+                  <span class="row" style="gap:5px;flex:none">
+                    ${kindBadge[m.kind] || ''}
+                    <button class="btn ghost sm" data-pin="${m.id}:${!m.pinned}" title="${m.pinned ? 'Unpin' : 'Pin'}">📌</button>
+                    <button class="btn danger sm" data-forget="${m.id}" title="Forget">✕</button>
+                  </span>
+                </div>
+                <div class="dim">${esc(m.source)} · ${timeAgo(m.learnedAt)}</div>
+              </div>`).join('') : '<p class="dim" style="margin-top:10px">Nothing learned yet — chat with your team and durable statements like “we never discount below 10%” are remembered automatically.</p>'}
+          </div>
+        </div>
       </div>
     </div>
   </div>`;
@@ -447,8 +482,14 @@ routes.brain = async (main) => {
     };
   };
   $(".page", main).addEventListener('click', async (e) => {
-    const id = e.target.dataset?.del;
-    if (id) { await api('DELETE', `/api/brain/knowledge/${id}`); navigate(); }
+    const t = e.target;
+    if (t.dataset?.del) { await api('DELETE', `/api/brain/knowledge/${t.dataset.del}`); navigate(); }
+    else if (t.dataset?.forget) { await api('DELETE', `/api/brain/memories/${t.dataset.forget}`); toast('Forgotten'); navigate(); }
+    else if (t.dataset?.pin) {
+      const [id, pinned] = t.dataset.pin.split(':');
+      await api('PATCH', `/api/brain/memories/${id}`, { pinned: pinned === 'true' });
+      navigate();
+    }
   });
 };
 

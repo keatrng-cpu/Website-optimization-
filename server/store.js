@@ -28,6 +28,8 @@ const DEFAULTS = () => ({
   analytics: [],   // { siteSlug, path, day, count }
   inbox: [],       // { id, title, body, from, read, createdAt, documentId }
   integrations: [],// { id, name, preset, type, category, icon, baseUrl, testPath, auth, extraHeaders, authValue, enabled, lastTest, createdAt }
+  memories: [],    // { id, text, kind: fact|preference|goal, source, learnedAt, pinned }
+  feedback: {},    // per-helper { up, down } reply-rating counters
   settings: {
     provider: 'offline', // offline | anthropic | openai | ollama
     apiKey: '',

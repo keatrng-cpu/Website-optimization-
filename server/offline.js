@@ -404,7 +404,7 @@ Your cart is saved — and it's popular. {Product} tends to sell out.
 **[Complete your order →]** Questions? Just reply.`;
   },
 
-  general(req, brain, helper) {
+  general(req, brain, helper, ws) {
     return `# ${helper ? helper.name + "'s" : ''} response
 
 **Your request:** ${req}
@@ -440,6 +440,10 @@ Do those three and come back — I'll tailor the plan to what you've built.`;
     }
     const lines = [];
     lines.push(`# Your focus right now — a read across ${biz(brain)}`);
+    const mems = (ws?.memories || []).slice(0, 3);
+    if (mems.length) {
+      lines.push('\n**What your team remembers:** ' + mems.map((m) => `“${m.text}”`).join(' · '));
+    }
     lines.push('\nHere\'s what your AI team can see across the whole workspace:\n');
     if (b.openTasks.length) lines.push(`- **${b.openTasks.length} open task${b.openTasks.length > 1 ? 's' : ''}** — start with **${b.openTasks[0].title}**${b.openTasks[0].helperId ? ` (assigned; hit “AI run” to have it completed for you)` : ' (assign a teammate and let them run it)'}.`);
     if (b.lastAudit) {
@@ -468,5 +472,14 @@ Do those three and come back — I'll tailor the plan to what you've built.`;
 export function offlineGenerate({ helper, brain, message, workspace }) {
   const intent = detectIntent(message || '');
   const gen = GENERATORS[intent] || GENERATORS.general;
-  return gen(message, brain, helper, workspace);
+  let out = gen(message, brain, helper, workspace);
+  // Surface a genuinely relevant learned memory on every intent (relevance is
+  // computed word-overlap — deterministic, never invented).
+  if (intent !== 'status') {
+    const words = new Set(String(message || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length >= 5));
+    const remembered = (workspace?.memories || []).find((m) =>
+      m.pinned || String(m.text).toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').some((w) => w.length >= 5 && words.has(w)));
+    if (remembered) out = `> 🧬 Remembering: “${remembered.text}” — factored in below.\n\n` + out;
+  }
+  return out;
 }

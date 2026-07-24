@@ -16,6 +16,7 @@ import { generate, makeToolCaller } from './ai.js';
 import { toolMeta, buildTools, runAgent, runPlanner, AGENT_SYSTEM } from './agent.js';
 import { buildExport } from './export-site.js';
 import { runQuickstart } from './quickstart.js';
+import { learnFromMessage, recordFeedback } from './memory.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -63,7 +64,23 @@ export function createApp({ dataDir } = {}) {
   });
 
   // ---------- brain ----------
-  router.get('/api/brain', (req, res) => sendJSON(res, 200, { brain: S().brain, knowledge: S().knowledge }));
+  router.get('/api/brain', (req, res) => sendJSON(res, 200, { brain: S().brain, knowledge: S().knowledge, memories: S().memories }));
+  router.patch('/api/brain/memories/:id', async (req, res, { id }) => {
+    const mem = S().memories.find((m) => m.id === id);
+    if (!mem) return notFound(res);
+    const b = await readBody(req);
+    if (b.pinned !== undefined) mem.pinned = !!b.pinned;
+    if (b.text !== undefined && String(b.text).trim()) mem.text = clean(b.text, 220);
+    store.save();
+    sendJSON(res, 200, mem);
+  });
+  router.delete('/api/brain/memories/:id', (req, res, { id }) => {
+    const i = S().memories.findIndex((m) => m.id === id);
+    if (i === -1) return notFound(res);
+    S().memories.splice(i, 1);
+    store.save();
+    sendJSON(res, 200, { ok: true });
+  });
   router.put('/api/brain', async (req, res) => {
     const body = await readBody(req);
     const allowed = ['businessName', 'tagline', 'industry', 'description', 'audience', 'tone', 'products', 'goals', 'website', 'location'];
@@ -120,13 +137,27 @@ export function createApp({ dataDir } = {}) {
     if (!raw || !String(raw).trim()) return bad(res, 'content is required');
     const content = clean(raw);
     chat.messages.push({ role: 'user', content, at: Date.now() });
+    const learned = learnFromMessage(S(), content, `chat with ${HELPER_MAP[chat.helperId]?.name || chat.helperId}`);
     if (chat.messages.length === 1) chat.title = String(content).slice(0, 60);
     const history = chat.messages.slice(-12).map(({ role, content }) => ({ role, content }));
     const { text, engine } = await askHelper(chat.helperId, history);
     const reply = { role: 'assistant', content: text, at: Date.now(), engine };
     chat.messages.push(reply);
     store.save();
-    sendJSON(res, 200, { reply, chat: { id: chat.id, title: chat.title } });
+    sendJSON(res, 200, { reply, chat: { id: chat.id, title: chat.title }, learned: learned.map((m) => m.text) });
+  });
+  // Thumbs feedback on an assistant reply — the team learns your taste.
+  router.post('/api/chats/:id/feedback', async (req, res, { id }) => {
+    const chat = S().chats.find((c) => c.id === id);
+    if (!chat) return notFound(res);
+    const { index, rating } = await readBody(req);
+    const msg = chat.messages[Number(index)];
+    if (!msg || msg.role !== 'assistant') return bad(res, 'index must point at an assistant reply');
+    if (!['up', 'down'].includes(rating)) return bad(res, 'rating must be up or down');
+    msg.rating = rating;
+    const totals = recordFeedback(S(), chat.helperId, rating);
+    store.save();
+    sendJSON(res, 200, { ok: true, helperId: chat.helperId, totals });
   });
 
   // ---------- tasks ----------

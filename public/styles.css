@@ -266,6 +266,12 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
   color: var(--accent2); font-variant-numeric: tabular-nums;
   min-width: 34px; letter-spacing: -.02em;
 }
+.fb {
+  background: none; border: 1px solid transparent; border-radius: 7px;
+  padding: 2px 7px; font-size: 13px; opacity: .45; transition: opacity .15s;
+}
+.fb:hover { opacity: 1; background: rgba(0,0,0,.2); }
+.fb.on { opacity: 1; border-color: var(--accent); }
 .chip {
   background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
   border-radius: 999px; padding: 6px 13px; font-size: 12.5px; text-align: left;
