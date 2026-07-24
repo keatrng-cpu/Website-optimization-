@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order confirmed — HELIX</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0a0d16">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬢</text></svg>">
+<style>
+  :root{--bg:#0a0d16;--panel:#141928;--border:#232b42;--text:#e9edf7;--muted:#93a0bf;--dim:#5b6786;--accent:#6c8cff;--accent2:#9b6cff;--good:#22c55e}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+    background-image:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(108,140,255,.13),transparent)}
+  .card{max-width:560px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:36px;text-align:center}
+  .mark{font-size:44px}
+  h1{font-size:26px;margin:12px 0 6px;font-weight:800}
+  h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted)}
+  .ok{display:inline-flex;align-items:center;gap:7px;margin-top:14px;background:#122b1e;border:1px solid #1f4d33;color:var(--good);
+    font-weight:700;font-size:13px;padding:6px 14px;border-radius:999px}
+  .steps{text-align:left;margin:26px 0 6px;display:grid;gap:12px}
+  .step{display:flex;gap:12px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .step b{display:block}
+  .step span{color:var(--muted);font-size:13.5px}
+  .n{flex:none;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#5a7bff,#8a5cff);color:#fff;
+    font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;margin-top:2px}
+  .btn{display:inline-block;margin-top:22px;padding:13px 28px;border-radius:12px;font-weight:700;color:#fff;text-decoration:none;
+    background:linear-gradient(90deg,#5a7bff,#8a5cff);box-shadow:0 8px 30px rgba(108,140,255,.28)}
+  .fine{color:var(--dim);font-size:12.5px;margin-top:18px}
+  .fine a{color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark">⬢</div>
+    <h1>Welcome to <span>HELIX&nbsp;Pro</span></h1>
+    <p class="sub">Your order is confirmed. A receipt from Stripe is on its way to your inbox — that email is your official order confirmation.</p>
+    <div class="ok">✓ Payment received</div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div><b>Open the app and sign in</b><span>Use the same email you checked out with, under Account, so your order matches your HELIX ID.</span></div></div>
+      <div class="step"><div class="n">2</div><div><b>Watch your inbox</b><span>Your Stripe receipt arrives now; your Pro activation follows — founding members are switched on first.</span></div></div>
+      <div class="step"><div class="n">3</div><div><b>Keep building meanwhile</b><span>Everything in the free app is already yours — your data lives on your device and nothing waits on us.</span></div></div>
+    </div>
+    <a class="btn" href="/app.html#/account">⬢ Open HELIX → Account</a>
+    <p class="fine">Questions or a billing issue? Reply to your Stripe receipt email and we'll take care of it. <a href="/">Back to home</a></p>
+  </div>
+</body>
+</html>

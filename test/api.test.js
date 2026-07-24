@@ -975,6 +975,18 @@ test('ticker: business stats are code-computed with real 7d pageview math', asyn
   assert.deepEqual(sug.data, [], 'no provider → no suggestions');
 });
 
+test('account: sign up, persist, sign out clears license', async () => {
+  const created = await api('PUT', '/api/account', { name: 'Keat', email: 'keat@example.com', company: 'HELIX' });
+  assert.equal(created.data.name, 'Keat');
+  assert.ok(created.data.createdAt, 'createdAt stamped on signup');
+  await api('PUT', '/api/account', { licenseKey: 'HELIX-TEST-1234' });
+  const got = await api('GET', '/api/account');
+  assert.equal(got.data.licenseKey, 'HELIX-TEST-1234');
+  const out = await api('PUT', '/api/account', { name: '', email: '' });
+  assert.equal(out.data.licenseKey, '', 'sign-out clears the stored license key');
+  assert.equal(out.data.createdAt, null);
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

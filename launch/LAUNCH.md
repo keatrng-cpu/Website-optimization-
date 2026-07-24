@@ -35,6 +35,28 @@ about 10 minutes.
    `keatrng-cpu/Website-optimization-`, branch `main`.
 2. Build command: *(leave empty)* · Publish directory: `launch/site`.
 
+## Checkout, confirmations & receipts (live links now baked in)
+
+The repo's pricing page now carries the real Stripe payment links, so
+re-deploying a fresh zip never reverts checkout to placeholders again.
+
+To make order confirmations match the HELIX theme (one-time Stripe setup):
+
+1. **Confirmation page:** Stripe Dashboard → Payment Links → each link →
+   Edit → After payment → *Redirect customers to your website* →
+   `https://helixscales.netlify.app/success.html`. Buyers land on a themed
+   ⬢ "Welcome to HELIX Pro" page that walks them into the app.
+2. **Receipt emails:** in the same edit screen, enable *Email customers
+   about successful payments*. Stripe sends the order-confirmation email.
+3. **Theme the email:** Stripe Dashboard → Settings → Branding — upload
+   `icon.svg` as the logo/icon, set brand color `#6c8cff` and accent
+   `#0a0d16`. Every receipt and checkout page then matches the site.
+
+If checkout ever misbehaves again, check in this order: the button's href
+on the live site (view-source — it must be a `buy.stripe.com` URL), the
+payment link is **Active** in Stripe and in **live mode** (not test), and
+your Stripe account has completed activation (payouts enabled).
+
 ## Step 2 — Create the Stripe payment links (5 minutes)
 
 1. In Stripe (https://dashboard.stripe.com) create two products:

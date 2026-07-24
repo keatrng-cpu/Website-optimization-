@@ -15,6 +15,7 @@ const DEFAULTS = () => ({
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
   feedback: {}, usageLog: [], agentRuns: [],
+  account: { name: '', email: '', company: '', licenseKey: '', createdAt: null },
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -705,6 +706,22 @@ async function handle(method, pathname, query, body) {
         db.inbox.unshift({ id: uid(), title: `Autopilot ran: “${goal.slice(0, 60)}”`, body: out.summary.slice(0, 200), from: 'vizzy', read: false, documentId: null, link: '#/autopilot', createdAt: Date.now() });
         save();
         return ok(out);
+      }
+      break;
+    }
+
+    case 'account': {
+      const a = db.account || (db.account = { name: '', email: '', company: '', licenseKey: '', createdAt: null });
+      if (method === 'GET') return ok(a);
+      if (method === 'PUT') {
+        if (body.name !== undefined) a.name = clean(String(body.name), 80);
+        if (body.email !== undefined) a.email = clean(String(body.email), 120);
+        if (body.company !== undefined) a.company = clean(String(body.company), 120);
+        if (body.licenseKey !== undefined) a.licenseKey = clean(String(body.licenseKey), 80);
+        if (a.name && !a.createdAt) a.createdAt = Date.now();
+        if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; }
+        save();
+        return ok(a);
       }
       break;
     }

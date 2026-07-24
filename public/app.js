@@ -197,6 +197,7 @@ const NAV = [
   { id: 'about', icon: '✨', name: 'About HELIX' },
   { id: 'howto', icon: '🧭', name: 'How-to & Tips' },
   { label: 'System' },
+  { id: 'account', icon: '👤', name: 'Account' },
   { id: 'settings', icon: '⚙️', name: 'Settings' },
 ];
 
@@ -1424,6 +1425,60 @@ routes.autopilot = async (main) => {
     const ex = e.target.closest('[data-ex]');
     if (ex) { $('#goal', main).value = ex.dataset.ex; preview(ex.dataset.ex); }
   });
+};
+
+routes.account = async (main) => {
+  await loadBoot();
+  const acct = await api('GET', '/api/account').catch(() => ({}));
+  const signedIn = !!(acct.name || acct.email);
+  main.innerHTML = `<div class="page">
+    <div class="page-head"><div><h1>👤 Account</h1>
+      <p>${signedIn ? 'Your HELIX identity on this device.' : 'Create your HELIX ID — it lives on this device only, like everything else here.'}</p></div></div>
+    <div class="grid" style="grid-template-columns:minmax(280px,480px);justify-content:start">
+      <div class="card">
+        ${signedIn ? `
+          <div class="row" style="gap:12px;margin-bottom:14px">
+            <span class="avatar" style="background:#6c8cff22;font-weight:800">${esc((acct.name || acct.email).slice(0, 1).toUpperCase())}</span>
+            <div><b>${esc(acct.name || 'Unnamed')}</b><div class="dim">${esc(acct.email || '')}${acct.company ? ' · ' + esc(acct.company) : ''}</div></div>
+          </div>` : `<b style="display:block;margin-bottom:10px">Sign up / Sign in</b>`}
+        <label>Name</label><input id="acName" value="${esc(acct.name || '')}" placeholder="Keat">
+        <label>Email ${signedIn ? '' : '<span class="dim">— use the same email as your checkout so your order matches your account</span>'}</label>
+        <input id="acEmail" value="${esc(acct.email || '')}" placeholder="you@example.com" type="email">
+        <label>Company <span class="dim">(optional)</span></label><input id="acCompany" value="${esc(acct.company || '')}" placeholder="Your business">
+        <div class="row" style="margin-top:14px;gap:8px">
+          <button class="btn" id="acSave">${signedIn ? 'Save changes' : '⬢ Create my HELIX ID'}</button>
+          ${signedIn ? '<button class="btn ghost danger" id="acOut">Sign out</button>' : ''}
+        </div>
+        <p class="dim" style="margin-top:12px">🔒 Stored only in your workspace on this device — never sent to us or anyone else.</p>
+      </div>
+      <div class="card">
+        <b>Pro license</b>
+        <p class="muted" style="margin:8px 0;font-size:13px">Bought Pro? Your Stripe receipt email is your order confirmation. Paste the license key from it here when it arrives — founding members are activated first as managed-Pro rolls out.</p>
+        <label>License key</label><input id="acKey" value="${esc(acct.licenseKey || '')}" placeholder="HELIX-XXXX-XXXX">
+        <div style="margin-top:12px"><button class="btn ghost" id="acKeySave">Save key</button></div>
+        <p class="dim" style="margin-top:10px">No key yet? <a href="/#pricing" target="_blank">See plans</a> — the free tier stays fully yours either way.</p>
+      </div>
+    </div>
+  </div>`;
+
+  $('#acSave', main).onclick = async () => {
+    const name = $('#acName', main).value.trim();
+    const email = $('#acEmail', main).value.trim();
+    if (!name && !email) { toast('Add a name or email to sign up', true); return; }
+    await api('PUT', '/api/account', { name, email, company: $('#acCompany', main).value.trim() });
+    toast(signedIn ? 'Account updated' : `Welcome to HELIX${name ? ', ' + name : ''} ⬢`);
+    navigate();
+  };
+  const out = $('#acOut', main);
+  if (out) out.onclick = async () => {
+    await api('PUT', '/api/account', { name: '', email: '', company: '', licenseKey: '' });
+    toast('Signed out — your workspace data stays on this device');
+    navigate();
+  };
+  $('#acKeySave', main).onclick = async () => {
+    await api('PUT', '/api/account', { licenseKey: $('#acKey', main).value.trim() });
+    toast('License key saved');
+  };
 };
 
 routes.quickstart = async (main) => {

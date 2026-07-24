@@ -701,6 +701,21 @@ export function createApp({ dataDir } = {}) {
   });
 
   // ---------- settings / export ----------
+  // ---------- account (device-local profile; never leaves this machine) ----------
+  router.get('/api/account', (req, res) => sendJSON(res, 200, S().account || {}));
+  router.put('/api/account', async (req, res) => {
+    const b = await readBody(req);
+    const a = S().account || (S().account = { name: '', email: '', company: '', licenseKey: '', createdAt: null });
+    if (b.name !== undefined) a.name = clean(String(b.name), 80);
+    if (b.email !== undefined) a.email = clean(String(b.email), 120);
+    if (b.company !== undefined) a.company = clean(String(b.company), 120);
+    if (b.licenseKey !== undefined) a.licenseKey = clean(String(b.licenseKey), 80);
+    if (a.name && !a.createdAt) a.createdAt = Date.now();
+    if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; } // sign-out clears
+    store.save();
+    sendJSON(res, 200, a);
+  });
+
   router.get('/api/settings', (req, res) => sendJSON(res, 200, redactedSettings()));
   router.put('/api/settings', async (req, res) => {
     const b = await readBody(req);

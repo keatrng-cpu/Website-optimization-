@@ -334,6 +334,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
 /* shield the menu from the app's global form styles (label display:block, input width:100%) */
 #helix-ticker .hx-menu label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 5px 2px; font-size: .86rem; font-weight: 400; letter-spacing: normal; color: var(--text); }
 #helix-ticker .hx-menu input[type="checkbox"] { width: auto; flex: none; margin: 0; padding: 0; accent-color: var(--accent); }
+#helix-ticker .hx-stat sup { color: #e8b64c; font-size: .68em; margin-left: 2px; }
 /* ============ HELIX TICKER COMPONENT (self-contained: lift everything between the markers) ============ */
   .hx-ticker{position:relative;background:#0f1420;border:1px solid #232b3d;border-radius:12px;overflow:hidden;
     display:flex;align-items:stretch;font-size:.88rem;user-select:none}

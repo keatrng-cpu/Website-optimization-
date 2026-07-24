@@ -9,3 +9,8 @@
   from = "/app"
   to = "/app.html"
   status = 200
+
+[[redirects]]
+  from = "/success"
+  to = "/success.html"
+  status = 200

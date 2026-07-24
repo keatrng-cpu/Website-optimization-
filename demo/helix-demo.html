@@ -341,6 +341,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
 /* shield the menu from the app's global form styles (label display:block, input width:100%) */
 #helix-ticker .hx-menu label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 5px 2px; font-size: .86rem; font-weight: 400; letter-spacing: normal; color: var(--text); }
 #helix-ticker .hx-menu input[type="checkbox"] { width: auto; flex: none; margin: 0; padding: 0; accent-color: var(--accent); }
+#helix-ticker .hx-stat sup { color: #e8b64c; font-size: .68em; margin-left: 2px; }
 /* ============ HELIX TICKER COMPONENT (self-contained: lift everything between the markers) ============ */
   .hx-ticker{position:relative;background:#0f1420;border:1px solid #232b3d;border-radius:12px;overflow:hidden;
     display:flex;align-items:stretch;font-size:.88rem;user-select:none}
@@ -2760,6 +2761,7 @@ const DEFAULTS = () => ({
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
   feedback: {}, usageLog: [], agentRuns: [],
+  account: { name: '', email: '', company: '', licenseKey: '', createdAt: null },
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -3454,6 +3456,22 @@ async function handle(method, pathname, query, body) {
       break;
     }
 
+    case 'account': {
+      const a = db.account || (db.account = { name: '', email: '', company: '', licenseKey: '', createdAt: null });
+      if (method === 'GET') return ok(a);
+      if (method === 'PUT') {
+        if (body.name !== undefined) a.name = clean(String(body.name), 80);
+        if (body.email !== undefined) a.email = clean(String(body.email), 120);
+        if (body.company !== undefined) a.company = clean(String(body.company), 120);
+        if (body.licenseKey !== undefined) a.licenseKey = clean(String(body.licenseKey), 80);
+        if (a.name && !a.createdAt) a.createdAt = Date.now();
+        if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; }
+        save();
+        return ok(a);
+      }
+      break;
+    }
+
     case 'analytics':
       return ok(analyticsSummary());
 
@@ -3571,14 +3589,16 @@ function downloadBlob(blob, filename) {
 // Lifted from the VitaForge component per HELIXTICKERINTEGRATION.md.
 /* ============ HELIX TICKER COMPONENT JS (self-contained) ============ */
 var HelixTicker = (function(){
-  var PREFS_KEY = 'helix_ticker_prefs_v1';
+  var PREFS_KEY = 'helix_ticker_prefs_v2';
   var state = { speed: 45 /* px per second */, paused: false, offset: 0, raf: null, lastT: 0,
     stats: [], prefs: null, opts: {}, host: null };
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function loadPrefs(){
     try { var p = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); if (p && p.groups) return p; } catch(e){}
-    return { groups: { markets: true, business: true, custom: true }, hidden: {}, custom: [] };
+    // markets default OFF: your ticker leads with YOUR real numbers; sample
+    // quotes are opt-in from the gear menu (and clearly marked until live)
+    return { groups: { markets: false, business: true, custom: true }, hidden: {}, custom: [] };
   }
   function savePrefs(){ try { localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs)); } catch(e){} }
 
@@ -3606,6 +3626,13 @@ var HelixTicker = (function(){
     });
   }
 
+  function statInner(s){
+    var sample = s.group === 'markets' && !s.live;
+    return '<span class="k"'+(sample?' title="Illustrative sample quote — real market data arrives when you connect it in Settings"':'')+'>'+
+      esc(s.label)+(sample?'<sup>✱</sup>':'')+'</span>'+
+      '<span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct);
+  }
+
   function render(){
     var host = state.host;
     // innerHTML rebuild would otherwise close the menu and wipe typed input
@@ -3614,16 +3641,20 @@ var HelixTicker = (function(){
     var keepLabel = prevMenu && prevMenu.querySelector('#hxCLabel') ? prevMenu.querySelector('#hxCLabel').value : '';
     var keepValue = prevMenu && prevMenu.querySelector('#hxCValue') ? prevMenu.querySelector('#hxCValue').value : '';
     var vis = visibleStats();
-    var live = state.stats.some(function(s){ return s.group==='markets' && s.live; });
+    // The badge describes what is actually on screen: business + custom stats
+    // are always real workspace numbers; only sample market rows demote it.
+    var sampleShown = vis.some(function(s){ return s.group==='markets' && !s.live; });
+    var badge = sampleShown
+      ? '<div class="hx-live demo" title="Rows marked ✱ are illustrative sample quotes. Your business stats are always real."><span class="dot"></span>SAMPLE</div>'
+      : '<div class="hx-live" title="Every number here is computed live from your workspace."><span class="dot"></span>LIVE</div>';
     var itemHtml = vis.map(function(s){
-      return '<div class="hx-stat" data-id="'+esc(s.id)+'"><span class="k">'+esc(s.label)+'</span>'+
-        '<span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct)+'</div>';
+      return '<div class="hx-stat" data-id="'+esc(s.id)+'">'+statInner(s)+'</div>';
     }).join('');
     if (!vis.length) itemHtml = '<div class="hx-stat"><span class="k">No stats selected — open ⚙</span></div>';
     // Track duplicated for a seamless loop.
     host.innerHTML =
       '<div class="hx-ticker">'+
-        '<div class="hx-live'+(live?'':' demo')+'"><span class="dot"></span>'+(live?'LIVE':'SAMPLE')+'</div>'+
+        badge+
         '<div class="hx-viewport"><div class="hx-track">'+itemHtml+itemHtml+'</div></div>'+
         '<div class="hx-gear" title="Choose stats">⚙</div>'+
       '</div>'+ menuHtml();
@@ -3641,8 +3672,10 @@ var HelixTicker = (function(){
         (s.group==='custom'?'<span class="rm" data-rm="'+esc(s.id)+'">remove</span>':'')+'</label>';
     }).join('');
     return '<div class="hx-menu" id="hxMenu">'+
+      '<div class="hint" style="margin:0 0 10px">● <b>LIVE</b> stats are computed from your real workspace, every second. '+
+      '✱ Market quotes are illustrative samples until live market data is connected (Settings → gateway).</div>'+
       '<h4>Stat groups</h4>'+
-      '<label><input type="checkbox" data-grp="markets" '+(g.markets?'checked':'')+'> Markets (default)</label>'+
+      '<label><input type="checkbox" data-grp="markets" '+(g.markets?'checked':'')+'> Markets <span class="hint" style="margin:0">(sample until connected)</span></label>'+
       '<label><input type="checkbox" data-grp="business" '+(g.business?'checked':'')+'> My business</label>'+
       '<label><input type="checkbox" data-grp="custom" '+(g.custom?'checked':'')+'> Custom</label>'+
       '<div class="sect"><h4>Individual stats</h4>'+perStat+'</div>'+
@@ -3740,7 +3773,7 @@ var HelixTicker = (function(){
     if (!stats.length) {
       // Clearly-labeled sample market data (badge shows SAMPLE).
       [['SPY', 748.28, 6.2, 0.83], ['QQQ', 622.4, -1.9, -0.3], ['DIA', 512.1, 2.4, 0.47], ['BTC', 118342, 1120, 0.96]]
-        .forEach(function(r){ stats.push({ id: 'm_' + r[0], group: 'markets', label: r[0] + ' (sample)', value: r[1], change: r[2], changePct: r[3], live: false }); });
+        .forEach(function(r){ stats.push({ id: 'm_' + r[0], group: 'markets', label: r[0], value: r[1], change: r[2], changePct: r[3], live: false }); });
     }
     (state.opts.businessStats || []).forEach(function(b, i){
       stats.push({ id: 'b_' + (b.id || i), group: 'business', label: b.label, value: b.value, change: b.change != null ? b.change : null, changePct: b.changePct != null ? b.changePct : null });
@@ -3762,7 +3795,7 @@ var HelixTicker = (function(){
     state.host.querySelectorAll('.hx-stat[data-id]').forEach(function(n){
       var s = byId[n.getAttribute('data-id')];
       if (!s) return;
-      n.innerHTML = '<span class="k">'+esc(s.label)+'</span><span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct);
+      n.innerHTML = statInner(s);
     });
   }
 
@@ -3999,6 +4032,7 @@ const NAV = [
   { id: 'about', icon: '✨', name: 'About HELIX' },
   { id: 'howto', icon: '🧭', name: 'How-to & Tips' },
   { label: 'System' },
+  { id: 'account', icon: '👤', name: 'Account' },
   { id: 'settings', icon: '⚙️', name: 'Settings' },
 ];
 
@@ -5227,6 +5261,60 @@ routes.autopilot = async (main) => {
     const ex = e.target.closest('[data-ex]');
     if (ex) { $('#goal', main).value = ex.dataset.ex; preview(ex.dataset.ex); }
   });
+};
+
+routes.account = async (main) => {
+  await loadBoot();
+  const acct = await api('GET', '/api/account').catch(() => ({}));
+  const signedIn = !!(acct.name || acct.email);
+  main.innerHTML = `<div class="page">
+    <div class="page-head"><div><h1>👤 Account</h1>
+      <p>${signedIn ? 'Your HELIX identity on this device.' : 'Create your HELIX ID — it lives on this device only, like everything else here.'}</p></div></div>
+    <div class="grid" style="grid-template-columns:minmax(280px,480px);justify-content:start">
+      <div class="card">
+        ${signedIn ? `
+          <div class="row" style="gap:12px;margin-bottom:14px">
+            <span class="avatar" style="background:#6c8cff22;font-weight:800">${esc((acct.name || acct.email).slice(0, 1).toUpperCase())}</span>
+            <div><b>${esc(acct.name || 'Unnamed')}</b><div class="dim">${esc(acct.email || '')}${acct.company ? ' · ' + esc(acct.company) : ''}</div></div>
+          </div>` : `<b style="display:block;margin-bottom:10px">Sign up / Sign in</b>`}
+        <label>Name</label><input id="acName" value="${esc(acct.name || '')}" placeholder="Keat">
+        <label>Email ${signedIn ? '' : '<span class="dim">— use the same email as your checkout so your order matches your account</span>'}</label>
+        <input id="acEmail" value="${esc(acct.email || '')}" placeholder="you@example.com" type="email">
+        <label>Company <span class="dim">(optional)</span></label><input id="acCompany" value="${esc(acct.company || '')}" placeholder="Your business">
+        <div class="row" style="margin-top:14px;gap:8px">
+          <button class="btn" id="acSave">${signedIn ? 'Save changes' : '⬢ Create my HELIX ID'}</button>
+          ${signedIn ? '<button class="btn ghost danger" id="acOut">Sign out</button>' : ''}
+        </div>
+        <p class="dim" style="margin-top:12px">🔒 Stored only in your workspace on this device — never sent to us or anyone else.</p>
+      </div>
+      <div class="card">
+        <b>Pro license</b>
+        <p class="muted" style="margin:8px 0;font-size:13px">Bought Pro? Your Stripe receipt email is your order confirmation. Paste the license key from it here when it arrives — founding members are activated first as managed-Pro rolls out.</p>
+        <label>License key</label><input id="acKey" value="${esc(acct.licenseKey || '')}" placeholder="HELIX-XXXX-XXXX">
+        <div style="margin-top:12px"><button class="btn ghost" id="acKeySave">Save key</button></div>
+        <p class="dim" style="margin-top:10px">No key yet? <a href="/#pricing" target="_blank">See plans</a> — the free tier stays fully yours either way.</p>
+      </div>
+    </div>
+  </div>`;
+
+  $('#acSave', main).onclick = async () => {
+    const name = $('#acName', main).value.trim();
+    const email = $('#acEmail', main).value.trim();
+    if (!name && !email) { toast('Add a name or email to sign up', true); return; }
+    await api('PUT', '/api/account', { name, email, company: $('#acCompany', main).value.trim() });
+    toast(signedIn ? 'Account updated' : `Welcome to HELIX${name ? ', ' + name : ''} ⬢`);
+    navigate();
+  };
+  const out = $('#acOut', main);
+  if (out) out.onclick = async () => {
+    await api('PUT', '/api/account', { name: '', email: '', company: '', licenseKey: '' });
+    toast('Signed out — your workspace data stays on this device');
+    navigate();
+  };
+  $('#acKeySave', main).onclick = async () => {
+    await api('PUT', '/api/account', { licenseKey: $('#acKey', main).value.trim() });
+    toast('License key saved');
+  };
 };
 
 routes.quickstart = async (main) => {

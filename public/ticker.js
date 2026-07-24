@@ -2,14 +2,16 @@
 // Lifted from the VitaForge component per HELIXTICKERINTEGRATION.md.
 /* ============ HELIX TICKER COMPONENT JS (self-contained) ============ */
 var HelixTicker = (function(){
-  var PREFS_KEY = 'helix_ticker_prefs_v1';
+  var PREFS_KEY = 'helix_ticker_prefs_v2';
   var state = { speed: 45 /* px per second */, paused: false, offset: 0, raf: null, lastT: 0,
     stats: [], prefs: null, opts: {}, host: null };
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function loadPrefs(){
     try { var p = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); if (p && p.groups) return p; } catch(e){}
-    return { groups: { markets: true, business: true, custom: true }, hidden: {}, custom: [] };
+    // markets default OFF: your ticker leads with YOUR real numbers; sample
+    // quotes are opt-in from the gear menu (and clearly marked until live)
+    return { groups: { markets: false, business: true, custom: true }, hidden: {}, custom: [] };
   }
   function savePrefs(){ try { localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs)); } catch(e){} }
 
@@ -37,6 +39,13 @@ var HelixTicker = (function(){
     });
   }
 
+  function statInner(s){
+    var sample = s.group === 'markets' && !s.live;
+    return '<span class="k"'+(sample?' title="Illustrative sample quote — real market data arrives when you connect it in Settings"':'')+'>'+
+      esc(s.label)+(sample?'<sup>✱</sup>':'')+'</span>'+
+      '<span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct);
+  }
+
   function render(){
     var host = state.host;
     // innerHTML rebuild would otherwise close the menu and wipe typed input
@@ -45,16 +54,20 @@ var HelixTicker = (function(){
     var keepLabel = prevMenu && prevMenu.querySelector('#hxCLabel') ? prevMenu.querySelector('#hxCLabel').value : '';
     var keepValue = prevMenu && prevMenu.querySelector('#hxCValue') ? prevMenu.querySelector('#hxCValue').value : '';
     var vis = visibleStats();
-    var live = state.stats.some(function(s){ return s.group==='markets' && s.live; });
+    // The badge describes what is actually on screen: business + custom stats
+    // are always real workspace numbers; only sample market rows demote it.
+    var sampleShown = vis.some(function(s){ return s.group==='markets' && !s.live; });
+    var badge = sampleShown
+      ? '<div class="hx-live demo" title="Rows marked ✱ are illustrative sample quotes. Your business stats are always real."><span class="dot"></span>SAMPLE</div>'
+      : '<div class="hx-live" title="Every number here is computed live from your workspace."><span class="dot"></span>LIVE</div>';
     var itemHtml = vis.map(function(s){
-      return '<div class="hx-stat" data-id="'+esc(s.id)+'"><span class="k">'+esc(s.label)+'</span>'+
-        '<span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct)+'</div>';
+      return '<div class="hx-stat" data-id="'+esc(s.id)+'">'+statInner(s)+'</div>';
     }).join('');
     if (!vis.length) itemHtml = '<div class="hx-stat"><span class="k">No stats selected — open ⚙</span></div>';
     // Track duplicated for a seamless loop.
     host.innerHTML =
       '<div class="hx-ticker">'+
-        '<div class="hx-live'+(live?'':' demo')+'"><span class="dot"></span>'+(live?'LIVE':'SAMPLE')+'</div>'+
+        badge+
         '<div class="hx-viewport"><div class="hx-track">'+itemHtml+itemHtml+'</div></div>'+
         '<div class="hx-gear" title="Choose stats">⚙</div>'+
       '</div>'+ menuHtml();
@@ -72,8 +85,10 @@ var HelixTicker = (function(){
         (s.group==='custom'?'<span class="rm" data-rm="'+esc(s.id)+'">remove</span>':'')+'</label>';
     }).join('');
     return '<div class="hx-menu" id="hxMenu">'+
+      '<div class="hint" style="margin:0 0 10px">● <b>LIVE</b> stats are computed from your real workspace, every second. '+
+      '✱ Market quotes are illustrative samples until live market data is connected (Settings → gateway).</div>'+
       '<h4>Stat groups</h4>'+
-      '<label><input type="checkbox" data-grp="markets" '+(g.markets?'checked':'')+'> Markets (default)</label>'+
+      '<label><input type="checkbox" data-grp="markets" '+(g.markets?'checked':'')+'> Markets <span class="hint" style="margin:0">(sample until connected)</span></label>'+
       '<label><input type="checkbox" data-grp="business" '+(g.business?'checked':'')+'> My business</label>'+
       '<label><input type="checkbox" data-grp="custom" '+(g.custom?'checked':'')+'> Custom</label>'+
       '<div class="sect"><h4>Individual stats</h4>'+perStat+'</div>'+
@@ -171,7 +186,7 @@ var HelixTicker = (function(){
     if (!stats.length) {
       // Clearly-labeled sample market data (badge shows SAMPLE).
       [['SPY', 748.28, 6.2, 0.83], ['QQQ', 622.4, -1.9, -0.3], ['DIA', 512.1, 2.4, 0.47], ['BTC', 118342, 1120, 0.96]]
-        .forEach(function(r){ stats.push({ id: 'm_' + r[0], group: 'markets', label: r[0] + ' (sample)', value: r[1], change: r[2], changePct: r[3], live: false }); });
+        .forEach(function(r){ stats.push({ id: 'm_' + r[0], group: 'markets', label: r[0], value: r[1], change: r[2], changePct: r[3], live: false }); });
     }
     (state.opts.businessStats || []).forEach(function(b, i){
       stats.push({ id: 'b_' + (b.id || i), group: 'business', label: b.label, value: b.value, change: b.change != null ? b.change : null, changePct: b.changePct != null ? b.changePct : null });
@@ -193,7 +208,7 @@ var HelixTicker = (function(){
     state.host.querySelectorAll('.hx-stat[data-id]').forEach(function(n){
       var s = byId[n.getAttribute('data-id')];
       if (!s) return;
-      n.innerHTML = '<span class="k">'+esc(s.label)+'</span><span class="v">'+esc(fmtVal(s.value))+'</span>'+deltaHtml(s.change, s.changePct);
+      n.innerHTML = statInner(s);
     });
   }
 
