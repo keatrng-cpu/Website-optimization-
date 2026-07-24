@@ -2,16 +2,14 @@
 // Lifted from the VitaForge component per HELIXTICKERINTEGRATION.md.
 /* ============ HELIX TICKER COMPONENT JS (self-contained) ============ */
 var HelixTicker = (function(){
-  var PREFS_KEY = 'helix_ticker_prefs_v2';
+  var PREFS_KEY = 'helix_ticker_prefs_v3';
   var state = { speed: 45 /* px per second */, paused: false, offset: 0, raf: null, lastT: 0,
     stats: [], prefs: null, opts: {}, host: null };
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function loadPrefs(){
     try { var p = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); if (p && p.groups) return p; } catch(e){}
-    // markets default OFF: your ticker leads with YOUR real numbers; sample
-    // quotes are opt-in from the gear menu (and clearly marked until live)
-    return { groups: { markets: false, business: true, custom: true }, hidden: {}, custom: [] };
+    return { groups: { markets: true, business: true, custom: true }, hidden: {}, custom: [] };
   }
   function savePrefs(){ try { localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs)); } catch(e){} }
 
@@ -71,6 +69,7 @@ var HelixTicker = (function(){
         '<div class="hx-viewport"><div class="hx-track">'+itemHtml+itemHtml+'</div></div>'+
         '<div class="hx-gear" title="Choose stats">⚙</div>'+
       '</div>'+ menuHtml();
+    state.cardId = null; // innerHTML rebuild removed any open insight card
     var menu = host.querySelector('#hxMenu');
     if (keepOpen) menu.classList.add('open');
     if (keepLabel) menu.querySelector('#hxCLabel').value = keepLabel;
@@ -111,6 +110,19 @@ var HelixTicker = (function(){
     track.style.setProperty('--hx-dur', Math.max(12, half / state.speed) + 's');
     // touch devices have no hover: tap toggles pause
     host.querySelector('.hx-viewport').addEventListener('touchstart', function(){ track.classList.toggle('hx-hold'); }, {passive:true});
+
+    // hover (or tap) a stat → insight card with meaning, recommendation, tip
+    var vp = host.querySelector('.hx-viewport');
+    vp.addEventListener('mouseover', function(e){
+      var st = e.target.closest ? e.target.closest('.hx-stat[data-id]') : null;
+      if (st) showCard(st);
+    });
+    vp.addEventListener('mouseleave', function(){ hideCard(); });
+    vp.addEventListener('click', function(e){
+      var st = e.target.closest ? e.target.closest('.hx-stat[data-id]') : null;
+      if (!st) return;
+      if (state.cardId === st.getAttribute('data-id')) hideCard(); else showCard(st);
+    });
 
     host.querySelector('.hx-gear').addEventListener('click', function(e){ e.stopPropagation(); menu.classList.toggle('open'); });
     if (!state.docBound) {
@@ -180,23 +192,73 @@ var HelixTicker = (function(){
   // Assemble the stat list from sources.
   function assemble(){
     var stats = [];
+    var MKT_DESC = { SPY: 'S&P 500 ETF — broad US market.', QQQ: 'Nasdaq-100 ETF — big tech.', DIA: 'Dow Jones ETF — US blue chips.', BTC: 'Bitcoin, in US dollars.' };
     (state.marketQuotes || []).forEach(function(q){
-      stats.push({ id: 'm_' + q.symbol, group: 'markets', label: q.symbol, value: q.last, change: q.change, changePct: q.changePct, live: true });
+      stats.push({ id: 'm_' + q.symbol, group: 'markets', label: q.symbol, value: q.last, change: q.change, changePct: q.changePct, live: true,
+        desc: (MKT_DESC[q.symbol] || q.symbol) + ' Live quote via your connected gateway.',
+        tip: 'Live market context for planning — HELIX never trades or advises on securities.' });
     });
     if (!stats.length) {
       // Clearly-labeled sample market data (badge shows SAMPLE).
       [['SPY', 748.28, 6.2, 0.83], ['QQQ', 622.4, -1.9, -0.3], ['DIA', 512.1, 2.4, 0.47], ['BTC', 118342, 1120, 0.96]]
-        .forEach(function(r){ stats.push({ id: 'm_' + r[0], group: 'markets', label: r[0], value: r[1], change: r[2], changePct: r[3], live: false }); });
+        .forEach(function(r){ stats.push({ id: 'm_' + r[0], group: 'markets', label: r[0], value: r[1], change: r[2], changePct: r[3], live: false,
+          desc: (MKT_DESC[r[0]] || r[0]) + ' This is an illustrative SAMPLE quote — not live data.',
+          tip: 'Connect live market data in Settings → gateway and this row flips to LIVE automatically.' }); });
     }
     (state.opts.businessStats || []).forEach(function(b, i){
-      stats.push({ id: 'b_' + (b.id || i), group: 'business', label: b.label, value: b.value, change: b.change != null ? b.change : null, changePct: b.changePct != null ? b.changePct : null });
+      stats.push({ id: 'b_' + (b.id || i), group: 'business', label: b.label, value: b.value, change: b.change != null ? b.change : null, changePct: b.changePct != null ? b.changePct : null,
+        desc: b.desc || 'Computed live from your workspace.', tip: b.tip || '', href: b.href || '' });
     });
     (state.prefs.custom || []).forEach(function(c){
-      stats.push({ id: c.id, group: 'custom', label: c.label, value: c.value });
+      stats.push({ id: c.id, group: 'custom', label: c.label, value: c.value,
+        desc: 'Your custom stat — the value is whatever you set it to.',
+        tip: 'Edit or remove it any time from the ⚙ menu.' });
     });
     state.stats = stats;
   }
   function rebuild(){ render(); }
+
+  // ----- hover insight card: pause is native (:hover), the card adds meaning -----
+  function findStat(id){ for (var i = 0; i < state.stats.length; i++) if (state.stats[i].id === id) return state.stats[i]; return null; }
+  function cardHtml(s){
+    var sample = s.group === 'markets' && !s.live;
+    return '<div class="row1"><b>'+esc(s.label)+'</b>'+
+      '<span class="badge '+(sample?'demo':'live')+'">'+(sample?'SAMPLE':'LIVE')+'</span></div>'+
+      '<div class="val">'+esc(fmtVal(s.value))+' '+deltaHtml(s.change, s.changePct)+'</div>'+
+      (s.desc ? '<p class="desc">'+esc(s.desc)+'</p>' : '')+
+      (s.tip ? '<p class="tip">💡 '+esc(s.tip)+'</p>' : '')+
+      (s.href ? '<a class="go" href="'+esc(s.href)+'">Open →</a>' : '');
+  }
+  function showCard(statEl){
+    var id = statEl.getAttribute('data-id');
+    var s = id && findStat(id);
+    if (!s) return;
+    state.cardId = id;
+    var host = state.host;
+    if (state.hideT) { clearTimeout(state.hideT); state.hideT = null; }
+    var card = host.querySelector('.hx-card');
+    if (!card) {
+      card = document.createElement('div'); card.className = 'hx-card'; host.appendChild(card);
+      card.addEventListener('mouseenter', function(){ if (state.hideT) { clearTimeout(state.hideT); state.hideT = null; } });
+      card.addEventListener('mouseleave', function(){ hideCard(); });
+    }
+    card.innerHTML = cardHtml(s);
+    var hostR = host.getBoundingClientRect();
+    var r = statEl.getBoundingClientRect();
+    var left = Math.max(8, Math.min(r.left - hostR.left, hostR.width - 296));
+    card.style.left = left + 'px';
+    card.classList.add('open');
+  }
+  function hideCard(){
+    // grace period so the pointer can travel from the stat into the card
+    if (state.hideT) clearTimeout(state.hideT);
+    state.hideT = setTimeout(function(){
+      state.hideT = null;
+      state.cardId = null;
+      var card = state.host.querySelector('.hx-card');
+      if (card) card.classList.remove('open');
+    }, 250);
+  }
 
   // Fast path for frequent refreshes: patch values into the existing DOM.
   // A full render() would restart the marquee animation and rebuild the menu,
@@ -210,6 +272,12 @@ var HelixTicker = (function(){
       if (!s) return;
       n.innerHTML = statInner(s);
     });
+    // keep an open insight card current
+    if (state.cardId) {
+      var open = findStat(state.cardId);
+      var card = state.host.querySelector('.hx-card.open');
+      if (open && card) card.innerHTML = cardHtml(open);
+    }
   }
 
   function mount(sel, opts){
