@@ -75,6 +75,30 @@ async function askGateway(helper, message) {
   finally { clearTimeout(timer); }
 }
 
+// AI-assisted memory via the gateway: propose, then verify against the
+// user's words (aiLearn) before saving. Fire-and-forget from the chat route.
+async function gatewayProposeMemories(message) {
+  const st = db.settings;
+  if (st.provider !== 'openai' || !st.apiKey || !st.baseUrl) return '';
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + st.apiKey },
+      body: JSON.stringify({
+        model: st.model || 'auto', max_tokens: 300,
+        messages: [{ role: 'system', content: MEMORY_PROPOSAL_SYSTEM }, { role: 'user', content: message }],
+      }),
+      signal: ctl.signal,
+    });
+    if (!r.ok) return '';
+    const d = await r.json();
+    return d?.choices?.[0]?.message?.content || '';
+  } catch { return ''; }
+  finally { clearTimeout(timer); }
+}
+
 async function ask(helperId, message) {
   const helper = HELPER_MAP[helperId] || HELPER_MAP.vizzy;
   const live = await askGateway(helper, message);
@@ -220,6 +244,11 @@ async function handle(method, pathname, query, body) {
         const _c = clean(String(body.content));
         chat.messages.push({ role: 'user', content: _c, at: Date.now() });
         const learned = learnFromMessage(db, _c, `chat with ${HELPER_MAP[chat.helperId]?.name || chat.helperId}`);
+        gatewayProposeMemories(_c).then((raw) => {
+          if (!raw) return;
+          const added = aiLearn(db, raw, _c, 'ai-verified · chat');
+          if (added.length) save();
+        }).catch(() => {});
         if (chat.messages.length === 1) chat.title = _c.slice(0, 60);
         const { text, engine } = await ask(chat.helperId, _c);
         const reply = { role: 'assistant', content: text, at: Date.now(), engine };

@@ -31,6 +31,18 @@ function detectIntent(text) {
   return 'general';
 }
 
+// Small talk deserves a conversation, not a framework dump.
+const GREETING = /^(hey|hi+|hello|yo|sup|howdy|hiya|greetings|good (morning|afternoon|evening))\b/i;
+const THANKS = /^(thanks|thank you|thx|ty|appreciate)\b/i;
+function isSmallTalk(text) {
+  const t = String(text || '').trim();
+  if (THANKS.test(t)) return 'thanks';
+  if (GREETING.test(t) && t.length <= 40) return 'greeting';
+  if (t.length <= 18 && t.split(/\s+/).length <= 3) return 'greeting';
+  if (/^how are you\b|^how's it going\b|^what'?s up\b/i.test(t)) return 'greeting';
+  return null;
+}
+
 // Turn the live workspace snapshot into a compact, referenceable brief.
 function workspaceBrief(ws) {
   if (!ws) return null;
@@ -469,8 +481,37 @@ Do those three and come back — I'll tailor the plan to what you've built.`;
   },
 };
 
+// A real conversational turn: short, warm, persona-flavored, context-aware.
+function chatTurn(kind, req, brain, helper, ws) {
+  const h = helper || { name: 'Vizzy', emoji: '🗂️', role: 'Virtual assistant', skills: ['Organizing work'] };
+  if (kind === 'thanks') {
+    return `Anytime! 🙌 That's what I'm here for. Ping me whenever you want another pass — I'll pick up right where we left off.`;
+  }
+  // one computed, genuinely useful context nudge
+  let nudge = '';
+  const openTasks = (ws?.tasks || []).filter((t) => t.status !== 'done');
+  const lastAudit = (ws?.seoAudits || [])[0];
+  const unposted = (ws?.calendar || []).filter((p) => p.status === 'draft');
+  if (openTasks.length) nudge = `I can see ${openTasks.length} open task${openTasks.length > 1 ? 's' : ''} on the board — “${openTasks[0].title}” is up next if you want a hand.`;
+  else if (lastAudit && lastAudit.failed > 0) nudge = `Your last SEO audit found ${lastAudit.failed} thing${lastAudit.failed > 1 ? 's' : ''} to fix — happy to walk through them.`;
+  else if (unposted.length) nudge = `You've got ${unposted.length} draft post${unposted.length > 1 ? 's' : ''} waiting in the calendar.`;
+  else if (brain.businessName) nudge = `Things look tidy for ${brain.businessName} right now.`;
+  const offers = (h.skills || []).slice(0, 3).map((s) => `- ${s}`).join('\n');
+  const role = String(h.role || '').toLowerCase();
+  const roleLine = /(analyst|coach|manager|writer|recruiter|specialist|assistant)$/.test(role)
+    ? `your ${role}` : `I run ${role} for you`;
+  return `Hey! ${h.emoji} ${h.name} here — ${roleLine}. ${nudge}
+
+What are we working on? A few things I'm good at:
+${offers}
+
+Just tell me in plain words — or ask “what should I focus on?” for a read across the whole workspace.`;
+}
+
 export function offlineGenerate({ helper, brain, message, workspace }) {
-  const intent = detectIntent(message || '');
+  let intent = detectIntent(message || '');
+  const small = intent === 'general' ? isSmallTalk(message) : null;
+  if (small) return chatTurn(small, message, brain, helper, workspace);
   const gen = GENERATORS[intent] || GENERATORS.general;
   let out = gen(message, brain, helper, workspace);
   // Surface a genuinely relevant learned memory on every intent (relevance is

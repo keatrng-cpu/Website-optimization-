@@ -52,6 +52,60 @@ export function learnFromMessage(state, text, source) {
   return added;
 }
 
+// ---- AI-assisted memory (automated, verified) ------------------------------
+// A connected model proposes candidate memories from conversation nuance, but
+// every candidate is verified deterministically against the user's actual
+// words before it is saved — the no-invented-memories guarantee holds.
+
+export const MEMORY_PROPOSAL_SYSTEM = [
+  'You extract durable business memories from ONE user message.',
+  'Reply with up to 3 lines, each starting exactly with "MEMORY: ", quoting the user\'s own words as closely as possible (light trimming only). If nothing durable was stated, reply exactly "NONE".',
+  'Only include stable facts, preferences, or goals the user stated about their business or how they like to work.',
+  'Never include questions, requests, small talk, or anything the user did not say. Never add numbers or facts of your own.',
+].join('\n');
+
+export function parseCandidates(raw) {
+  return String(raw || '')
+    .split('\n')
+    .filter((l) => l.trim().toUpperCase().startsWith('MEMORY:'))
+    .map((l) => l.trim().slice(7).trim().replace(/^["“]|["”]$/g, ''))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+// A candidate survives only if ≥70% of its meaningful words appear in the
+// user's message (so the model cannot smuggle in invented content).
+export function verifyCandidates(message, candidates) {
+  const msgWords = new Set(normalize(message).split(' ').filter((w) => w.length >= 3));
+  return candidates.filter((c) => {
+    if (c.length < 15 || c.length > 220 || c.trim().endsWith('?')) return false;
+    const words = normalize(c).split(' ').filter((w) => w.length >= 3);
+    if (!words.length) return false;
+    const present = words.filter((w) => msgWords.has(w)).length;
+    return present / words.length >= 0.7;
+  });
+}
+
+// Parse a model's proposal text, verify, classify, dedupe, and store.
+export function aiLearn(state, rawProposal, message, source) {
+  const verified = verifyCandidates(message, parseCandidates(rawProposal));
+  const added = [];
+  for (const text of verified) {
+    const key = normalize(text);
+    if (state.memories.some((m) => normalize(m.text) === key)) continue;
+    const kind = PREFERENCE.test(text) ? 'preference' : GOAL.test(text) ? 'goal' : 'fact';
+    const mem = { id: uid(), text: text.replace(/[.!]+$/, ''), kind, source: source || 'ai (verified)', learnedAt: Date.now(), pinned: false };
+    state.memories.unshift(mem);
+    added.push(mem);
+  }
+  while (state.memories.length > MAX_MEMORIES) {
+    const idx = state.memories.map((m) => m.pinned).lastIndexOf(false);
+    if (idx === -1) break;
+    state.memories.splice(idx, 1);
+  }
+  return added;
+}
+
 // Thumbs feedback on an assistant reply → per-helper counters (computed, not guessed).
 export function recordFeedback(state, helperId, rating) {
   state.feedback[helperId] ??= { up: 0, down: 0 };

@@ -581,6 +581,18 @@ function detectIntent(text) {
   return 'general';
 }
 
+// Small talk deserves a conversation, not a framework dump.
+const GREETING = /^(hey|hi+|hello|yo|sup|howdy|hiya|greetings|good (morning|afternoon|evening))\b/i;
+const THANKS = /^(thanks|thank you|thx|ty|appreciate)\b/i;
+function isSmallTalk(text) {
+  const t = String(text || '').trim();
+  if (THANKS.test(t)) return 'thanks';
+  if (GREETING.test(t) && t.length <= 40) return 'greeting';
+  if (t.length <= 18 && t.split(/\s+/).length <= 3) return 'greeting';
+  if (/^how are you\b|^how's it going\b|^what'?s up\b/i.test(t)) return 'greeting';
+  return null;
+}
+
 // Turn the live workspace snapshot into a compact, referenceable brief.
 function workspaceBrief(ws) {
   if (!ws) return null;
@@ -1019,8 +1031,37 @@ Do those three and come back — I'll tailor the plan to what you've built.`;
   },
 };
 
+// A real conversational turn: short, warm, persona-flavored, context-aware.
+function chatTurn(kind, req, brain, helper, ws) {
+  const h = helper || { name: 'Vizzy', emoji: '🗂️', role: 'Virtual assistant', skills: ['Organizing work'] };
+  if (kind === 'thanks') {
+    return `Anytime! 🙌 That's what I'm here for. Ping me whenever you want another pass — I'll pick up right where we left off.`;
+  }
+  // one computed, genuinely useful context nudge
+  let nudge = '';
+  const openTasks = (ws?.tasks || []).filter((t) => t.status !== 'done');
+  const lastAudit = (ws?.seoAudits || [])[0];
+  const unposted = (ws?.calendar || []).filter((p) => p.status === 'draft');
+  if (openTasks.length) nudge = `I can see ${openTasks.length} open task${openTasks.length > 1 ? 's' : ''} on the board — “${openTasks[0].title}” is up next if you want a hand.`;
+  else if (lastAudit && lastAudit.failed > 0) nudge = `Your last SEO audit found ${lastAudit.failed} thing${lastAudit.failed > 1 ? 's' : ''} to fix — happy to walk through them.`;
+  else if (unposted.length) nudge = `You've got ${unposted.length} draft post${unposted.length > 1 ? 's' : ''} waiting in the calendar.`;
+  else if (brain.businessName) nudge = `Things look tidy for ${brain.businessName} right now.`;
+  const offers = (h.skills || []).slice(0, 3).map((s) => `- ${s}`).join('\n');
+  const role = String(h.role || '').toLowerCase();
+  const roleLine = /(analyst|coach|manager|writer|recruiter|specialist|assistant)$/.test(role)
+    ? `your ${role}` : `I run ${role} for you`;
+  return `Hey! ${h.emoji} ${h.name} here — ${roleLine}. ${nudge}
+
+What are we working on? A few things I'm good at:
+${offers}
+
+Just tell me in plain words — or ask “what should I focus on?” for a read across the whole workspace.`;
+}
+
 function offlineGenerate({ helper, brain, message, workspace }) {
-  const intent = detectIntent(message || '');
+  let intent = detectIntent(message || '');
+  const small = intent === 'general' ? isSmallTalk(message) : null;
+  if (small) return chatTurn(small, message, brain, helper, workspace);
   const gen = GENERATORS[intent] || GENERATORS.general;
   let out = gen(message, brain, helper, workspace);
   // Surface a genuinely relevant learned memory on every intent (relevance is
@@ -2047,6 +2088,60 @@ function learnFromMessage(state, text, source) {
   return added;
 }
 
+// ---- AI-assisted memory (automated, verified) ------------------------------
+// A connected model proposes candidate memories from conversation nuance, but
+// every candidate is verified deterministically against the user's actual
+// words before it is saved — the no-invented-memories guarantee holds.
+
+const MEMORY_PROPOSAL_SYSTEM = [
+  'You extract durable business memories from ONE user message.',
+  'Reply with up to 3 lines, each starting exactly with "MEMORY: ", quoting the user\'s own words as closely as possible (light trimming only). If nothing durable was stated, reply exactly "NONE".',
+  'Only include stable facts, preferences, or goals the user stated about their business or how they like to work.',
+  'Never include questions, requests, small talk, or anything the user did not say. Never add numbers or facts of your own.',
+].join('\n');
+
+function parseCandidates(raw) {
+  return String(raw || '')
+    .split('\n')
+    .filter((l) => l.trim().toUpperCase().startsWith('MEMORY:'))
+    .map((l) => l.trim().slice(7).trim().replace(/^["“]|["”]$/g, ''))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+// A candidate survives only if ≥70% of its meaningful words appear in the
+// user's message (so the model cannot smuggle in invented content).
+function verifyCandidates(message, candidates) {
+  const msgWords = new Set(normalize(message).split(' ').filter((w) => w.length >= 3));
+  return candidates.filter((c) => {
+    if (c.length < 15 || c.length > 220 || c.trim().endsWith('?')) return false;
+    const words = normalize(c).split(' ').filter((w) => w.length >= 3);
+    if (!words.length) return false;
+    const present = words.filter((w) => msgWords.has(w)).length;
+    return present / words.length >= 0.7;
+  });
+}
+
+// Parse a model's proposal text, verify, classify, dedupe, and store.
+function aiLearn(state, rawProposal, message, source) {
+  const verified = verifyCandidates(message, parseCandidates(rawProposal));
+  const added = [];
+  for (const text of verified) {
+    const key = normalize(text);
+    if (state.memories.some((m) => normalize(m.text) === key)) continue;
+    const kind = PREFERENCE.test(text) ? 'preference' : GOAL.test(text) ? 'goal' : 'fact';
+    const mem = { id: uid(), text: text.replace(/[.!]+$/, ''), kind, source: source || 'ai (verified)', learnedAt: Date.now(), pinned: false };
+    state.memories.unshift(mem);
+    added.push(mem);
+  }
+  while (state.memories.length > MAX_MEMORIES) {
+    const idx = state.memories.map((m) => m.pinned).lastIndexOf(false);
+    if (idx === -1) break;
+    state.memories.splice(idx, 1);
+  }
+  return added;
+}
+
 // Thumbs feedback on an assistant reply → per-helper counters (computed, not guessed).
 function recordFeedback(state, helperId, rating) {
   state.feedback[helperId] ??= { up: 0, down: 0 };
@@ -2505,6 +2600,30 @@ async function askGateway(helper, message) {
   finally { clearTimeout(timer); }
 }
 
+// AI-assisted memory via the gateway: propose, then verify against the
+// user's words (aiLearn) before saving. Fire-and-forget from the chat route.
+async function gatewayProposeMemories(message) {
+  const st = db.settings;
+  if (st.provider !== 'openai' || !st.apiKey || !st.baseUrl) return '';
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const r = await fetch(st.baseUrl.replace(/\/$/, '') + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + st.apiKey },
+      body: JSON.stringify({
+        model: st.model || 'auto', max_tokens: 300,
+        messages: [{ role: 'system', content: MEMORY_PROPOSAL_SYSTEM }, { role: 'user', content: message }],
+      }),
+      signal: ctl.signal,
+    });
+    if (!r.ok) return '';
+    const d = await r.json();
+    return d?.choices?.[0]?.message?.content || '';
+  } catch { return ''; }
+  finally { clearTimeout(timer); }
+}
+
 async function ask(helperId, message) {
   const helper = HELPER_MAP[helperId] || HELPER_MAP.vizzy;
   const live = await askGateway(helper, message);
@@ -2650,6 +2769,11 @@ async function handle(method, pathname, query, body) {
         const _c = clean(String(body.content));
         chat.messages.push({ role: 'user', content: _c, at: Date.now() });
         const learned = learnFromMessage(db, _c, `chat with ${HELPER_MAP[chat.helperId]?.name || chat.helperId}`);
+        gatewayProposeMemories(_c).then((raw) => {
+          if (!raw) return;
+          const added = aiLearn(db, raw, _c, 'ai-verified · chat');
+          if (added.length) save();
+        }).catch(() => {});
         if (chat.messages.length === 1) chat.title = _c.slice(0, 60);
         const { text, engine } = await ask(chat.helperId, _c);
         const reply = { role: 'assistant', content: text, at: Date.now(), engine };
@@ -3620,7 +3744,7 @@ routes.brain = async (main) => {
         </div>
         <div class="card" style="margin-top:14px">
           <div class="row spread"><b>🧬 Learned memories</b><span class="badge">${memories.length}</span></div>
-          <p class="dim" style="margin:6px 0 4px">Your team learns as you chat: first-person facts, preferences, and goals you state are remembered automatically — fully visible here, pin the important ones, delete anything.</p>
+          <p class="dim" style="margin:6px 0 4px">Your team learns as you chat: first-person facts, preferences, and goals are remembered automatically — and with an AI provider connected, the model proposes extra memories, each verified word-for-word against what you actually said before it's saved. Everything is visible here: pin the important ones, delete anything.</p>
           <div>
             ${memories.length ? memories.slice(0, 30).map((m) => `
               <div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">

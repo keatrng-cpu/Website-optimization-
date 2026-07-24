@@ -16,7 +16,8 @@ import { generate, makeToolCaller } from './ai.js';
 import { toolMeta, buildTools, runAgent, runPlanner, AGENT_SYSTEM } from './agent.js';
 import { buildExport } from './export-site.js';
 import { runQuickstart } from './quickstart.js';
-import { learnFromMessage, recordFeedback } from './memory.js';
+import { learnFromMessage, recordFeedback, aiLearn, MEMORY_PROPOSAL_SYSTEM } from './memory.js';
+import { aiPropose } from './ai.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -137,7 +138,18 @@ export function createApp({ dataDir } = {}) {
     if (!raw || !String(raw).trim()) return bad(res, 'content is required');
     const content = clean(raw);
     chat.messages.push({ role: 'user', content, at: Date.now() });
-    const learned = learnFromMessage(S(), content, `chat with ${HELPER_MAP[chat.helperId]?.name || chat.helperId}`);
+    const helperName = HELPER_MAP[chat.helperId]?.name || chat.helperId;
+    const learned = learnFromMessage(S(), content, `chat with ${helperName}`);
+    // AI-assisted memory: a connected model proposes extra candidates from
+    // nuance; each is verified against the user's words before saving.
+    // Fire-and-forget so the reply is never delayed.
+    aiPropose(S().settings, MEMORY_PROPOSAL_SYSTEM, content)
+      .then((raw) => {
+        if (!raw) return;
+        const added = aiLearn(S(), raw, content, `ai-verified · chat with ${helperName}`);
+        if (added.length) store.save();
+      })
+      .catch(() => {});
     if (chat.messages.length === 1) chat.title = String(content).slice(0, 60);
     const history = chat.messages.slice(-12).map(({ role, content }) => ({ role, content }));
     const { text, engine } = await askHelper(chat.helperId, history);

@@ -778,6 +778,60 @@ test('brain learning: reply feedback is recorded and reaches prompts', async () 
   await api('DELETE', `/api/chats/${chat.data.id}`);
 });
 
+test('chat feel: greetings get a real conversational reply, not a framework dump', async () => {
+  const chat = await api('POST', '/api/chats', { helperId: 'buddy' });
+  const hey = await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'hey buddy' });
+  const text = hey.data.reply.content;
+  assert.ok(/Buddy here/i.test(text), 'replies as the persona');
+  assert.ok(!/Your request:|Recommendation for/i.test(text), 'no templated framework for small talk');
+  assert.ok(/what are we working on/i.test(text), 'invites a real conversation');
+  assert.ok(text.length < 700, 'short like a chat message');
+
+  const thanks = await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'thanks!' });
+  assert.ok(/anytime/i.test(thanks.data.reply.content), 'thanks gets a warm ack');
+
+  // a real work request still gets the full structured deliverable
+  const work = await api('POST', `/api/chats/${chat.data.id}/messages`, { content: 'Write me a growth plan for the next quarter' });
+  assert.ok(/#|\*\*/.test(work.data.reply.content), 'substantive asks stay substantive');
+  await api('DELETE', `/api/chats/${chat.data.id}`);
+});
+
+test('AI-assisted memory: proposals are verified against the user\'s words', async () => {
+  const { parseCandidates, verifyCandidates, aiLearn } = await import('../server/memory.js');
+  const message = 'Our flagship product is the ember stoneware mug and we restock every second Friday.';
+
+  // model proposes two grounded lines and one invented one
+  const raw = [
+    'MEMORY: Our flagship product is the ember stoneware mug',
+    'MEMORY: We restock every second Friday',
+    'MEMORY: The business made $2M in revenue last year',
+    'MEMORY: Do you want a discount?',
+  ].join('\n');
+  assert.equal(parseCandidates(raw).length, 3, 'caps at 3 candidates');
+  const verified = verifyCandidates(message, parseCandidates(raw));
+  assert.ok(verified.some((v) => v.includes('flagship product')), 'grounded fact kept');
+  assert.ok(verified.some((v) => v.includes('second Friday')), 'grounded fact kept');
+  assert.ok(!verified.some((v) => v.includes('$2M')), 'invented fact rejected');
+  assert.ok(!verified.some((v) => v.endsWith('?')), 'questions rejected');
+
+  const state = { memories: [], feedback: {} };
+  const added = aiLearn(state, raw, message, 'ai-verified · test');
+  assert.equal(added.length, 2, 'only verified memories stored');
+  assert.ok(added.every((m) => m.source === 'ai-verified · test'));
+  // dedupe on re-run
+  assert.equal(aiLearn(state, raw, message, 'ai-verified · test').length, 0);
+
+  // NONE and garbage are no-ops
+  assert.equal(aiLearn(state, 'NONE', message, 'x').length, 0);
+  assert.equal(aiLearn(state, 'sure! here are some thoughts', message, 'x').length, 0);
+});
+
+test('AI-assisted memory: aiPropose is silent without a configured provider', async () => {
+  const { aiPropose } = await import('../server/ai.js');
+  assert.equal(await aiPropose({ provider: 'offline' }, 'sys', 'msg'), '');
+  assert.equal(await aiPropose({ provider: 'anthropic', apiKey: '' }, 'sys', 'msg'), '');
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

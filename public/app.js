@@ -441,7 +441,7 @@ routes.brain = async (main) => {
         </div>
         <div class="card" style="margin-top:14px">
           <div class="row spread"><b>🧬 Learned memories</b><span class="badge">${memories.length}</span></div>
-          <p class="dim" style="margin:6px 0 4px">Your team learns as you chat: first-person facts, preferences, and goals you state are remembered automatically — fully visible here, pin the important ones, delete anything.</p>
+          <p class="dim" style="margin:6px 0 4px">Your team learns as you chat: first-person facts, preferences, and goals are remembered automatically — and with an AI provider connected, the model proposes extra memories, each verified word-for-word against what you actually said before it's saved. Everything is visible here: pin the important ones, delete anything.</p>
           <div>
             ${memories.length ? memories.slice(0, 30).map((m) => `
               <div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">

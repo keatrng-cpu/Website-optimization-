@@ -161,6 +161,20 @@ export function makeToolCaller({ settings, system, tools }) {
 
 function safeParse(s) { try { return JSON.parse(s); } catch { return {}; } }
 
+// A single direct model call with NO offline fallback — used for auxiliary
+// jobs like memory proposal, where "no model" should mean "no output".
+export async function aiPropose(settings, system, user) {
+  const provider = settings?.provider;
+  const configured = provider === 'ollama' || ((provider === 'anthropic' || provider === 'openai') && settings.apiKey);
+  if (!configured) return '';
+  try {
+    const fn = PROVIDERS[provider];
+    return (await fn(settings, system, [{ role: 'user', content: user }])) || '';
+  } catch {
+    return '';
+  }
+}
+
 export async function generate({ settings, helper, brain, system, messages, workspace }) {
   const provider = PROVIDERS[settings?.provider];
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
