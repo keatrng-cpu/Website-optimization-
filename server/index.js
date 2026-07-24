@@ -15,6 +15,7 @@ import { PRESETS, PRESET_MAP, redactIntegration, testIntegration } from './integ
 import { generate, makeToolCaller } from './ai.js';
 import { toolMeta, buildTools, runAgent, runPlanner, AGENT_SYSTEM } from './agent.js';
 import { buildExport } from './export-site.js';
+import { runQuickstart } from './quickstart.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -570,6 +571,15 @@ export function createApp({ dataDir } = {}) {
 
   // ---------- agent / autopilot ----------
   const agentCtx = () => ({ store, ask: (helperId, message) => askHelper(helperId, [{ role: 'user', content: message }]) });
+  // Quick Start: one description → Brain + live site + content + automation + audit
+  router.post('/api/quickstart', async (req, res) => {
+    const b = await readBody(req);
+    const name = clean(b.name, 80);
+    const description = clean(b.description, 2000);
+    if (!name.trim() || !description.trim()) return bad(res, 'name and description are required');
+    const out = await runQuickstart(agentCtx(), { name, description });
+    sendJSON(res, 200, out);
+  });
   router.get('/api/agent/tools', (req, res) => sendJSON(res, 200, toolMeta()));
   router.post('/api/agent/act', async (req, res) => {
     const { tool, args } = await readBody(req);

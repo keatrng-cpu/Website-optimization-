@@ -664,6 +664,50 @@ test('spec/part1: openai model discovery falls back to first listed (Claude-list
   } finally { globalThis.fetch = realFetch; }
 });
 
+test('edge: Quick Start builds a whole business from one description', async () => {
+  const saved = (await api('GET', '/api/brain')).data.brain;
+  const sitesBefore = (await api('GET', '/api/sites')).data.length;
+  const calBefore = (await api('GET', '/api/calendar')).data.length;
+
+  const r = await api('POST', '/api/quickstart', {
+    name: 'Peak Pottery',
+    description: 'Handmade ceramic mugs and bowls for design-loving city dwellers. We sell mugs, bowls and custom sets. Based in Portland.',
+  });
+  assert.equal(r.status, 200);
+  // deterministic Brain extraction
+  assert.equal(r.data.brain.businessName, 'Peak Pottery');
+  assert.ok(/design-loving/.test(r.data.brain.audience), 'audience extracted from "for …"');
+  assert.ok(/mugs/.test(r.data.brain.products), 'products extracted from "we sell …"');
+  assert.equal(r.data.brain.location, 'Portland');
+  // real artifacts, all at once
+  assert.ok(r.data.site.birthScore >= 95, `quick-start site born at ${r.data.site.birthScore}`);
+  assert.ok(r.data.audit.score >= 95);
+  assert.equal(r.data.posts, 7);
+  assert.equal(r.data.automation.cadence, 'weekly');
+  assert.equal((await api('GET', '/api/sites')).data.length, sitesBefore + 1);
+  assert.ok((await api('GET', '/api/calendar')).data.length >= calBefore + 7);
+  assert.ok((await api('GET', '/api/automations')).data.some((a) => a.name === 'Weekly content ideas'));
+  assert.ok((await api('GET', '/api/inbox')).data.some((i) => i.title.startsWith('Quick Start finished')));
+
+  // idempotent-ish: running again must not duplicate the site or automation
+  const again = await api('POST', '/api/quickstart', { name: 'Peak Pottery', description: 'Handmade ceramic mugs for city dwellers.' });
+  assert.equal(again.data.site.existing, true);
+  assert.equal((await api('GET', '/api/automations')).data.filter((a) => a.name === 'Weekly content ideas').length, 1);
+
+  const missing = await api('POST', '/api/quickstart', { name: '', description: '' });
+  assert.equal(missing.status, 400);
+  await api('PUT', '/api/brain', saved);
+});
+
+test('edge: expanded palette catalog includes light theme', async () => {
+  const boot = await api('GET', '/api/bootstrap');
+  for (const p of ['aurora', 'sand', 'plum', 'midnight']) assert.ok(boot.data.palettes.includes(p), `palette ${p}`);
+  const site = await api('POST', '/api/sites', { name: 'Palette Probe', palette: 'sand' });
+  assert.equal(site.data.palette, 'sand');
+  assert.ok(site.data.birthScore >= 95, 'light palette sites are born compliant too');
+  await api('DELETE', `/api/sites/${site.data.id}`);
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

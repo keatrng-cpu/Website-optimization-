@@ -579,6 +579,17 @@ async function handle(method, pathname, query, body) {
       break;
     }
 
+    case 'quickstart': {
+      if (method === 'POST') {
+        const name = clean(body.name, 80);
+        const description = clean(body.description, 2000);
+        if (!name.trim() || !description.trim()) return bad('name and description are required');
+        const ctx = { store: { state: db, save }, ask: (helperId, message) => ask(helperId, message) };
+        return ok(await runQuickstart(ctx, { name, description }));
+      }
+      break;
+    }
+
     case 'agent': {
       const ctx = { store: { state: db, save }, ask: (helperId, message) => ask(helperId, message) };
       if (p[1] === 'tools') return ok(toolMeta());

@@ -7,6 +7,9 @@ export const PALETTES = {
   forest:   { bg: '#0c1512', surface: '#14211c', text: '#e7f2ec', muted: '#8fa89c', accent: '#22c55e', accent2: '#a3e635' },
   sunset:   { bg: '#180f0f', surface: '#241615', text: '#f7ece8', muted: '#bf9a93', accent: '#f97316', accent2: '#f43f5e' },
   mono:     { bg: '#0a0a0a', surface: '#161616', text: '#f5f5f5', muted: '#9c9c9c', accent: '#fafafa', accent2: '#a3a3a3' },
+  aurora:   { bg: '#0d0b1e', surface: '#191533', text: '#ece9ff', muted: '#a29ec7', accent: '#8b5cf6', accent2: '#06b6d4' },
+  sand:     { bg: '#f6f1e7', surface: '#fffdf7', text: '#2b2417', muted: '#7a6f5a', accent: '#b45309', accent2: '#0f766e' },
+  plum:     { bg: '#1a0f1c', surface: '#2a1a2e', text: '#f5e9f7', muted: '#b795bd', accent: '#d946ef', accent2: '#f97316' },
 };
 
 export function slugify(name) {

@@ -227,8 +227,8 @@ routes.dashboard = async (main) => {
   main.innerHTML = `<div class="page">
     <div class="page-head">
       <div><h1>${setup ? `Welcome back, ${esc(brain.businessName)}` : 'Welcome to HELIX'}</h1>
-      <p>Your 12-person AI team is on the clock. ${setup ? 'Here’s where things stand.' : 'Start by teaching the Brain about your business.'}</p></div>
-      ${setup ? '' : '<a class="btn" href="#/brain">🧠 Set up your Brain</a>'}
+      <p>Your 12-person AI team is on the clock. ${setup ? 'Here’s where things stand.' : 'Describe your business once — get a website, content, and automations in about a minute.'}</p></div>
+      ${setup ? '' : '<span class="row"><a class="btn" href="#/quickstart">🚀 Quick Start</a><a class="btn ghost" href="#/brain">🧠 Set up Brain manually</a></span>'}
     </div>
     <div class="grid c4" style="margin-bottom:22px">
       <div class="card stat"><div class="num">${open}</div><div class="lbl">Open tasks</div></div>
@@ -1118,6 +1118,26 @@ routes.about = async (main) => {
     </section>
 
     <section class="learn-section">
+      <h2>How HELIX compares</h2>
+      <p class="muted" style="max-width:640px">From a 2026 survey of the field (AI-employee suites, AI website builders, and content platforms), these are the factual differences — no marketing math:</p>
+      <div class="card" style="margin-top:14px;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="text-align:left;color:var(--muted)"><th style="padding:8px 10px">Dimension</th><th style="padding:8px 10px">Common in the field</th><th style="padding:8px 10px">HELIX</th></tr></thead>
+          <tbody>
+            ${[
+              ['Pricing', 'Subscriptions and credit meters; plans that change under you', 'Free software. No meter. Optional AI spend goes to your own provider key'],
+              ['Your data', 'Lives on the vendor’s cloud', 'One local file you own, with one-click export/import'],
+              ['Offline', 'Requires their servers', 'Every feature works with zero network via the offline engine'],
+              ['Output', 'Chat advice; often generic', 'Autopilot executes real work; Brain + workspace context ground every generation'],
+              ['Numbers', 'Model-written claims', 'Code computes every figure (SEO scores, analytics); models write prose only'],
+              ['Time to value', 'Minutes to a first draft or site', 'Quick Start: Brain + live site + content week + automation from one description'],
+            ].map(([a, b, c]) => `<tr style="border-top:1px solid var(--border)"><td style="padding:8px 10px"><b>${a}</b></td><td style="padding:8px 10px;color:var(--muted)">${b}</td><td style="padding:8px 10px">${c}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="learn-section">
       <div class="card cta-learn">
         <h2 style="border:none;margin:0">The whole point: momentum.</h2>
         <p class="muted" style="max-width:600px;margin:8px auto 18px">Most tools give you one more thing to manage. HELIX gives you a team that manages the work — so the only thing left for you to do is have the next idea.</p>
@@ -1286,6 +1306,52 @@ routes.autopilot = async (main) => {
     const ex = e.target.closest('[data-ex]');
     if (ex) { $('#goal', main).value = ex.dataset.ex; run(ex.dataset.ex); }
   });
+};
+
+routes.quickstart = async (main) => {
+  await loadBoot();
+  main.innerHTML = `<div class="page">
+    <div class="hero-band" style="margin-bottom:22px">
+      <div class="eyebrow">Quick Start</div>
+      <h1>Describe your business. Get everything.</h1>
+      <p class="lede">One sentence in, a running scaffold out: your <em>Brain</em> filled, a <em>website live</em> with a computed SEO score, a <em>week of social content</em>, a <em>weekly automation</em>, and an <em>audit</em> — each linked below when done.</p>
+      <label>Business name</label>
+      <input id="qsName" placeholder="Peak Pottery" style="max-width:420px">
+      <label>Describe it in a sentence or two</label>
+      <textarea id="qsDesc" rows="3" placeholder="Handmade ceramic mugs and bowls for design-loving city dwellers. We sell mugs, bowls and custom sets. Based in Portland."></textarea>
+      <div style="margin-top:14px"><button class="btn" id="qsGo">🚀 Build my business</button></div>
+    </div>
+    <div id="qsOut"></div>
+  </div>`;
+
+  const out = $('#qsOut', main);
+  $('#qsGo', main).onclick = async () => {
+    const name = $('#qsName', main).value.trim();
+    const description = $('#qsDesc', main).value.trim();
+    if (!name || !description) return toast('Add a name and a short description', true);
+    const btn = $('#qsGo', main);
+    btn.disabled = true; btn.textContent = '⏳ Building your business…';
+    out.innerHTML = `<div class="card"><div class="row" style="gap:10px"><div class="typing"><i></i><i></i><i></i></div><b>Filling your Brain, building the site, drafting content…</b></div></div>`;
+    try {
+      const r = await api('POST', '/api/quickstart', { name, description });
+      await loadBoot();
+      out.innerHTML = `<div class="card">
+        <b style="font-size:16px">✅ ${esc(r.brain.businessName)} is up and running</b>
+        <div class="grid c2" style="margin-top:14px">
+          <div class="card"><b>🌐 Website live</b><p class="muted" style="margin-top:4px">Born at <b>${r.site.birthScore}/100</b> on the SEO auditor.</p><div class="row" style="margin-top:10px"><a class="btn sm" href="${esc(r.site.url)}" target="_blank">↗ View site</a><a class="btn ghost sm" href="#/sites">Edit in Studio</a></div></div>
+          <div class="card"><b>🔍 SEO audited</b><p class="muted" style="margin-top:4px">Scored <b>${r.audit.score}/100</b> (${esc(r.audit.grade)}), ${r.audit.issues} item${r.audit.issues === 1 ? '' : 's'} to review.</p><a class="btn ghost sm" style="margin-top:10px" href="#/seo">Open report</a></div>
+          <div class="card"><b>📣 ${r.posts} posts drafted</b><p class="muted" style="margin-top:4px">A week of platform-native content, ready to schedule.</p><a class="btn ghost sm" style="margin-top:10px" href="#/marketing">Open calendar</a></div>
+          <div class="card"><b>🔁 Automation running</b><p class="muted" style="margin-top:4px">“${esc(r.automation.name)}” — ${esc(r.automation.cadence)}, results land in your Inbox.</p><a class="btn ghost sm" style="margin-top:10px" href="#/automations">Manage</a></div>
+        </div>
+        <p class="dim" style="margin-top:14px">Your Brain was filled from the description — <a href="#/brain">review and enrich it</a> to make every future output sharper.</p>
+      </div>`;
+      toast('Your business scaffold is live 🚀');
+    } catch (e) {
+      out.innerHTML = `<div class="empty"><div class="big">⚠️</div>${esc(e.message)}</div>`;
+    } finally {
+      btn.disabled = false; btn.textContent = '🚀 Build my business';
+    }
+  };
 };
 
 routes.integrations = async (main) => {

@@ -67,9 +67,10 @@ export function buildTools() {
         let slug = wanted;
         while (s.sites.some((x) => x.slug === slug)) slug += '-' + uid().slice(0, 4);
         const site = { id: uid(), name: String(name), slug, palette: PALETTES[palette] ? palette : 'midnight', sections: defaultSections(s.brain), published: true, createdAt: Date.now(), updatedAt: Date.now() };
+        site.birthScore = auditHTML(renderSite(site, s.brain), `Studio site: ${site.name}`).score;
         s.sites.unshift(site);
         ctx.store.save();
-        return { site: site.name, slug: site.slug, url: `/sites/${site.slug}` };
+        return { site: site.name, slug: site.slug, url: `/sites/${site.slug}`, birthScore: site.birthScore };
       },
     },
     run_seo_audit: {

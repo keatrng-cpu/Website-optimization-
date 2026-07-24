@@ -109,6 +109,7 @@ const js = [
   port('server/seo.js'),
   port('server/integrations.js'),
   port('server/agent.js'),
+  port('server/quickstart.js'),
   port('server/zip.js'),
   port('server/export-site.js'),
   read('demo/browser-backend.js'),

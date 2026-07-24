@@ -43,6 +43,11 @@ free port and prints the correct link.
 
 ## Why this beats a cloud AI-employee subscription
 
+A full 2026 field survey of competitors (AI-employee suites, AI website
+builders, content platforms — strong points, weak points, practicality) lives
+in [`COMPETITIVE.md`](COMPETITIVE.md), including the shared-weakness table
+HELIX is checked against.
+
 | | Sintra.ai (~$97/mo) | HELIX |
 |---|---|---|
 | Where your business data lives | Their servers | Your disk (`data/db.json`) |
