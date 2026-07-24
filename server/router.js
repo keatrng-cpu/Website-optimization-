@@ -4,7 +4,7 @@ export function createRouter() {
 
   function add(method, pattern, handler) {
     const parts = pattern.split('/').filter(Boolean);
-    routes.push({ method, parts, handler });
+    routes.push({ method, parts, handler, pattern });
   }
 
   function match(method, pathname) {
@@ -21,7 +21,7 @@ export function createRouter() {
           catch { params[p.slice(1)] = segs[i]; }
         } else if (p !== segs[i]) { ok = false; break; }
       }
-      if (ok) return { handler: r.handler, params };
+      if (ok) return { handler: r.handler, params, pattern: r.pattern };
     }
     return null;
   }

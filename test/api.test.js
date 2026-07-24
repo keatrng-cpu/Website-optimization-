@@ -987,6 +987,34 @@ test('account: sign up, persist, sign out clears license', async () => {
   assert.equal(out.data.createdAt, null);
 });
 
+test('owner: founder email unlocks Command Center; members are refused', async () => {
+  await api('PUT', '/api/account', { name: 'Visitor', email: 'someone@example.com' });
+  const denied = await api('GET', '/api/owner/stats');
+  assert.equal(denied.status, 403, 'members must not reach owner stats');
+
+  const founder = await api('PUT', '/api/account', { name: 'Keat', email: 'luxeforgeio@gmail.com' });
+  assert.equal(founder.data.role, 'owner', 'founder email grants owner role');
+  const stats = await api('GET', '/api/owner/stats');
+  assert.equal(stats.status, 200);
+  assert.ok(stats.data.telemetry.totalActions >= 1, 'actions were recorded');
+  assert.ok(Array.isArray(stats.data.telemetry.top) && stats.data.telemetry.top.length, 'most-used list populated');
+  assert.ok(stats.data.telemetry.top.every((a) => a.label && a.count > 0));
+  assert.ok(Array.isArray(stats.data.telemetry.untouched), 'least-used (untouched) list present');
+  assert.ok(stats.data.workspace.documents >= 0 && typeof stats.data.workspace.published === 'number');
+
+  // telemetry keys are normalized route patterns, never raw ids
+  const boot = await api('GET', '/api/bootstrap');
+  assert.equal(boot.data.account.role, 'owner', 'boot exposes the role for the sidebar');
+});
+
+test('owner: founder key prefix also unlocks; role is derived, not client-set', async () => {
+  await api('PUT', '/api/account', { name: 'K', email: 'other@example.com', licenseKey: 'HELIX-FOUNDER-0001' });
+  const a = await api('GET', '/api/account');
+  assert.equal(a.data.role, 'owner', 'founder key unlocks owner');
+  await api('PUT', '/api/account', { licenseKey: 'HELIX-1234' });
+  assert.equal((await api('GET', '/api/account')).data.role, 'member', 'role recomputed when key changes');
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

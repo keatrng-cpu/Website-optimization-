@@ -15,7 +15,8 @@ const DEFAULTS = () => ({
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
   feedback: {}, usageLog: [], agentRuns: [],
-  account: { name: '', email: '', company: '', licenseKey: '', createdAt: null },
+  account: { name: '', email: '', company: '', licenseKey: '', role: 'member', createdAt: null },
+  telemetry: { keys: {}, days: {} },
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -166,6 +167,9 @@ function previewHTML(idOrSlug) {
 }
 
 // ---- the API router ----
+const FOUNDER_EMAILS = ['luxeforgeio@gmail.com'];
+const FOUNDER_KEY_PREFIX = 'HELIX-FOUNDER-';
+
 async function handle(method, pathname, query, body) {
   const seg = pathname.split('/').filter(Boolean); // e.g. ['api','tasks','abc']
   const ok = (data, status = 200) => ({ status, data });
@@ -173,6 +177,9 @@ async function handle(method, pathname, query, body) {
   const bad = (msg) => ({ status: 400, data: { error: msg } });
   const p = seg.slice(1); // drop 'api'
   const id = p[1];
+  recordAction(db, method, pathname
+    .replace(/\/[0-9a-f]{12,}/gi, '/:id')
+    .replace(/^\/api\/(powerups|tasks|automations|chats|integrations|documents|sites)\/[^/]+/, '/api/$1/:id'));
 
   switch (p[0]) {
     case 'bootstrap':
@@ -184,6 +191,7 @@ async function handle(method, pathname, query, body) {
           automations: db.automations.length, sites: db.sites.length,
           unread: db.inbox.filter((i) => !i.read).length,
         },
+        account: { name: db.account?.name || '', role: db.account?.role || 'member' },
       });
 
     case 'brain': {
@@ -720,10 +728,27 @@ async function handle(method, pathname, query, body) {
         if (body.licenseKey !== undefined) a.licenseKey = clean(String(body.licenseKey), 80);
         if (a.name && !a.createdAt) a.createdAt = Date.now();
         if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; }
+        a.role = (FOUNDER_EMAILS.includes(a.email.toLowerCase()) || a.licenseKey.startsWith(FOUNDER_KEY_PREFIX)) ? 'owner' : 'member';
         save();
         return ok(a);
       }
       break;
+    }
+
+    case 'owner': {
+      const a = db.account || {};
+      if (a.role !== 'owner') return ok({ error: 'owner access required — sign in with the founder account' }, 403);
+      return ok({
+        telemetry: telemetrySummary(db),
+        workspace: {
+          sites: db.sites.length, published: db.sites.filter((x) => x.published).length,
+          documents: db.documents.length, tasks: db.tasks.length,
+          automations: db.automations.filter((x) => x.enabled).length,
+          memories: db.memories.length, integrations: db.integrations.filter((x) => x.enabled).length,
+          chats: db.chats.length,
+        },
+        account: { name: a.name, email: a.email, role: a.role, createdAt: a.createdAt },
+      });
     }
 
     case 'analytics':

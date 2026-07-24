@@ -2513,6 +2513,68 @@ function parseLabelLines(raw) {
 }
 
 
+// Device-local usage telemetry: which actions run, how often, on which days.
+// Metadata only — normalized route patterns and counts, never payloads.
+
+const DAY_CAP = 120;
+
+function recordAction(state, method, pattern) {
+  if (method === 'GET') return; // reads are not "actions" (and polls would swamp the stats)
+  if (pattern.startsWith('/api/telemetry') || pattern === '/api/inbox/read') return;
+  const t = state.telemetry && state.telemetry.keys ? state.telemetry : (state.telemetry = { keys: {}, days: {} });
+  const key = `${method} ${pattern}`;
+  t.keys[key] = (t.keys[key] || 0) + 1;
+  const day = new Date().toISOString().slice(0, 10);
+  t.days[day] = (t.days[day] || 0) + 1;
+  const days = Object.keys(t.days).sort();
+  if (days.length > DAY_CAP) for (const d of days.slice(0, days.length - DAY_CAP)) delete t.days[d];
+}
+
+// Human names for the actions that matter on the Command Center. Anything not
+// listed still shows, labeled by its route.
+const ACTION_LABELS = {
+  'POST /api/chats/:id/messages': '💬 Chat with the AI team',
+  'POST /api/powerups/:id/run': '⚡ Run a power-up',
+  'POST /api/sites': '🌐 Build a website',
+  'POST /api/seo/audit': '🔍 SEO audit',
+  'POST /api/agent/run': '🚀 Autopilot run',
+  'POST /api/agent/plan': '🧭 Autopilot plan preview',
+  'POST /api/quickstart': '✨ Quick Start',
+  'POST /api/tasks': '✅ Create a task',
+  'POST /api/tasks/:id/run': '▶ Task completed by AI',
+  'POST /api/marketing/calendar': '📣 Content calendar',
+  'POST /api/marketing/emails': '✉️ Email campaign',
+  'POST /api/automations': '🔁 Create an automation',
+  'POST /api/automations/:id/run': '🔁 Run an automation',
+  'POST /api/integrations': '🔌 Connect an integration',
+  'PUT /api/brain': '🧠 Update the Brain',
+  'POST /api/stats/ticker/suggest': '📊 Ticker AI suggest',
+  'PUT /api/account': '👤 Account update',
+  'PUT /api/settings': '⚙️ Settings change',
+  'POST /api/export': '📦 Workspace export',
+  'POST /api/inbox/read': '📥 Inbox read',
+};
+
+function telemetrySummary(state) {
+  const t = state.telemetry || { keys: {}, days: {} };
+  const entries = Object.entries(t.keys);
+  const totalActions = entries.reduce((a, [, n]) => a + n, 0);
+  const ranked = entries
+    .map(([key, count]) => ({ key, count, label: ACTION_LABELS[key] || key }))
+    .sort((a, b) => b.count - a.count);
+  const used = new Set(entries.map(([k]) => k));
+  const untouched = Object.entries(ACTION_LABELS)
+    .filter(([k]) => !used.has(k))
+    .map(([key, label]) => ({ key, label }));
+  const days = Object.entries(t.days).sort((a, b) => a[0] < b[0] ? -1 : 1);
+  const last30cut = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const activeDays30 = days.filter(([d]) => d >= last30cut).length;
+  let busiest = null;
+  for (const [d, n] of days) if (!busiest || n > busiest.count) busiest = { day: d, count: n };
+  return { totalActions, top: ranked.slice(0, 8), untouched, activeDays30, firstDay: days[0]?.[0] || null, busiest };
+}
+
+
 // Minimal store-only ZIP writer — no dependencies, no compression. Isomorphic
 // (Uint8Array + TextEncoder), so it runs both in Node and in the browser demo.
 
@@ -2818,7 +2880,8 @@ const DEFAULTS = () => ({
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
   feedback: {}, usageLog: [], agentRuns: [],
-  account: { name: '', email: '', company: '', licenseKey: '', createdAt: null },
+  account: { name: '', email: '', company: '', licenseKey: '', role: 'member', createdAt: null },
+  telemetry: { keys: {}, days: {} },
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -2969,6 +3032,9 @@ function previewHTML(idOrSlug) {
 }
 
 // ---- the API router ----
+const FOUNDER_EMAILS = ['luxeforgeio@gmail.com'];
+const FOUNDER_KEY_PREFIX = 'HELIX-FOUNDER-';
+
 async function handle(method, pathname, query, body) {
   const seg = pathname.split('/').filter(Boolean); // e.g. ['api','tasks','abc']
   const ok = (data, status = 200) => ({ status, data });
@@ -2976,6 +3042,9 @@ async function handle(method, pathname, query, body) {
   const bad = (msg) => ({ status: 400, data: { error: msg } });
   const p = seg.slice(1); // drop 'api'
   const id = p[1];
+  recordAction(db, method, pathname
+    .replace(/\/[0-9a-f]{12,}/gi, '/:id')
+    .replace(/^\/api\/(powerups|tasks|automations|chats|integrations|documents|sites)\/[^/]+/, '/api/$1/:id'));
 
   switch (p[0]) {
     case 'bootstrap':
@@ -2987,6 +3056,7 @@ async function handle(method, pathname, query, body) {
           automations: db.automations.length, sites: db.sites.length,
           unread: db.inbox.filter((i) => !i.read).length,
         },
+        account: { name: db.account?.name || '', role: db.account?.role || 'member' },
       });
 
     case 'brain': {
@@ -3523,10 +3593,27 @@ async function handle(method, pathname, query, body) {
         if (body.licenseKey !== undefined) a.licenseKey = clean(String(body.licenseKey), 80);
         if (a.name && !a.createdAt) a.createdAt = Date.now();
         if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; }
+        a.role = (FOUNDER_EMAILS.includes(a.email.toLowerCase()) || a.licenseKey.startsWith(FOUNDER_KEY_PREFIX)) ? 'owner' : 'member';
         save();
         return ok(a);
       }
       break;
+    }
+
+    case 'owner': {
+      const a = db.account || {};
+      if (a.role !== 'owner') return ok({ error: 'owner access required — sign in with the founder account' }, 403);
+      return ok({
+        telemetry: telemetrySummary(db),
+        workspace: {
+          sites: db.sites.length, published: db.sites.filter((x) => x.published).length,
+          documents: db.documents.length, tasks: db.tasks.length,
+          automations: db.automations.filter((x) => x.enabled).length,
+          memories: db.memories.length, integrations: db.integrations.filter((x) => x.enabled).length,
+          chats: db.chats.length,
+        },
+        account: { name: a.name, email: a.email, role: a.role, createdAt: a.createdAt },
+      });
     }
 
     case 'analytics':
@@ -4163,10 +4250,13 @@ const NAV = [
 
 function renderSidebar(active) {
   const counts = state.boot?.counts || {};
+  const nav = state.boot?.account?.role === 'owner'
+    ? [NAV[0], { id: 'owner', icon: '👑', name: 'Command Center' }, ...NAV.slice(1)]
+    : NAV;
   $('#sidebar').innerHTML = `
     <div class="logo"><span class="mark">⬢</span><span>HELIX<small>AI BUSINESS TEAM</small></span></div>
     <nav class="nav">
-      ${NAV.map((n) => n.label
+      ${nav.map((n) => n.label
         ? `<div class="nav-label">${n.label}</div>`
         : `<a href="#/${n.id}" class="${active === n.id ? 'active' : ''}">
              <span>${n.icon}</span><span>${n.name}</span>
@@ -5388,6 +5478,72 @@ routes.autopilot = async (main) => {
   });
 };
 
+routes.owner = async (main) => {
+  await loadBoot();
+  let data;
+  try { data = await api('GET', '/api/owner/stats'); }
+  catch { location.hash = '#/account'; return; }
+  const t = data.telemetry, w = data.workspace;
+  const maxCount = t.top[0]?.count || 1;
+  main.innerHTML = `<div class="page">
+    <div class="page-head"><div><h1>👑 Command Center</h1>
+      <p>Founder view for ${esc(data.account.name || data.account.email)} — every number below is computed live from this device's workspace.</p></div>
+      <span class="badge on">owner</span></div>
+
+    <div class="card" style="margin-bottom:18px">
+      <b>Fleet — across all users</b>
+      <p class="dim" style="margin:6px 0 10px">HELIX is private by architecture: each user's workspace lives on their own device, so fleet numbers come from the systems that actually see them.</p>
+      <div class="grid c3">
+        <a class="card" style="color:inherit" href="https://app.netlify.com/projects/helixscales/forms" target="_blank" rel="noopener">
+          <b>🧾 Signups</b><p class="dim" style="margin-top:4px">Opt-in signup beacons land in Netlify → Forms ("helix-signups"). Turn on form notifications to get an email per signup.</p></a>
+        <a class="card" style="color:inherit" href="https://dashboard.stripe.com/customers" target="_blank" rel="noopener">
+          <b>💳 Paying customers</b><p class="dim" style="margin-top:4px">Stripe is the system of record — subscriptions, churn and per-customer history live here.</p></a>
+        <a class="card" style="color:inherit" href="https://dashboard.stripe.com" target="_blank" rel="noopener">
+          <b>📈 Revenue</b><p class="dim" style="margin-top:4px">MRR, payouts and the FOUNDING promo's uptake, straight from Stripe.</p></a>
+      </div>
+    </div>
+
+    <div class="grid c4" style="margin-bottom:18px">
+      <div class="card stat"><div class="num">${t.totalActions}</div><div class="lbl">Actions all-time</div></div>
+      <div class="card stat"><div class="num">${t.activeDays30}</div><div class="lbl">Active days (30d)</div></div>
+      <div class="card stat"><div class="num">${w.published}</div><div class="lbl">Published sites</div></div>
+      <div class="card stat"><div class="num">${w.documents}</div><div class="lbl">Documents</div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1.1fr .9fr;align-items:start">
+      <div class="card">
+        <b>Most used actions</b>
+        ${t.top.length ? t.top.map((a) => `
+          <div style="margin-top:10px">
+            <div class="row spread" style="font-size:13px"><span>${esc(a.label)}</span><b>${a.count}</b></div>
+            <div style="height:6px;border-radius:4px;background:var(--bg2);margin-top:4px"><div style="height:6px;border-radius:4px;width:${Math.max(4, Math.round((a.count / maxCount) * 100))}%;background:linear-gradient(90deg,#5a7bff,#8a5cff)"></div></div>
+          </div>`).join('')
+        : '<p class="dim" style="margin-top:8px">No actions recorded yet — use the app and this fills itself.</p>'}
+        ${t.busiest ? `<p class="dim" style="margin-top:12px">Busiest day: <b>${esc(t.busiest.day)}</b> (${t.busiest.count} actions)${t.firstDay ? ` · tracking since ${esc(t.firstDay)}` : ''}</p>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="card">
+          <b>Untouched features</b>
+          <p class="dim" style="margin:6px 0 4px">Zero uses so far — your least-used surface area:</p>
+          ${t.untouched.length ? t.untouched.map((u) => `<div style="margin-top:7px;font-size:13px">${esc(u.label)}</div>`).join('')
+            : '<p class="muted" style="margin-top:6px">None — you have used every tracked feature. 🏆</p>'}
+        </div>
+        <div class="card">
+          <b>Workspace</b>
+          <div class="grid c2" style="margin-top:8px;gap:8px">
+            ${[['Chats', w.chats], ['Tasks', w.tasks], ['Automations on', w.automations], ['Memories', w.memories], ['Integrations', w.integrations], ['Sites total', w.sites]]
+              .map(([l, v]) => `<div style="font-size:13px"><b>${v}</b> <span class="dim">${l}</span></div>`).join('')}
+          </div>
+        </div>
+        <div class="card" style="font-size:12.5px" >
+          <b>🔒 Security model</b>
+          <p class="dim" style="margin-top:6px">Owner access is enforced by the backend and unlocks analytics for <em>this device only</em>. No user's workspace is ever readable by anyone else — including you — because the data never leaves their machine. Fleet-level truth lives in Stripe and Netlify, behind your own logins.</p>
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+
 routes.account = async (main) => {
   await loadBoot();
   const acct = await api('GET', '/api/account').catch(() => ({}));
@@ -5400,17 +5556,21 @@ routes.account = async (main) => {
         ${signedIn ? `
           <div class="row" style="gap:12px;margin-bottom:14px">
             <span class="avatar" style="background:#6c8cff22;font-weight:800">${esc((acct.name || acct.email).slice(0, 1).toUpperCase())}</span>
-            <div><b>${esc(acct.name || 'Unnamed')}</b><div class="dim">${esc(acct.email || '')}${acct.company ? ' · ' + esc(acct.company) : ''}</div></div>
+            <div><b>${esc(acct.name || 'Unnamed')} ${acct.role === 'owner' ? '<span class="badge on">👑 founder</span>' : ''}</b>
+            <div class="dim">${esc(acct.email || '')}${acct.company ? ' · ' + esc(acct.company) : ''}</div></div>
           </div>` : `<b style="display:block;margin-bottom:10px">Sign up / Sign in</b>`}
         <label>Name</label><input id="acName" value="${esc(acct.name || '')}" placeholder="Keat">
         <label>Email ${signedIn ? '' : '<span class="dim">— use the same email as your checkout so your order matches your account</span>'}</label>
         <input id="acEmail" value="${esc(acct.email || '')}" placeholder="you@example.com" type="email">
         <label>Company <span class="dim">(optional)</span></label><input id="acCompany" value="${esc(acct.company || '')}" placeholder="Your business">
+        ${signedIn ? '' : `<label class="row" style="margin-top:12px;gap:8px;font-size:12.5px;color:var(--muted);align-items:flex-start;display:flex">
+          <input type="checkbox" id="acBeacon" checked style="width:auto;margin-top:2px">
+          <span>📣 Count my signup — sends <b>only your name &amp; email</b> to the HELIX founder, once, so they know you joined. Everything else always stays on your device.</span></label>`}
         <div class="row" style="margin-top:14px;gap:8px">
           <button class="btn" id="acSave">${signedIn ? 'Save changes' : '⬢ Create my HELIX ID'}</button>
           ${signedIn ? '<button class="btn ghost danger" id="acOut">Sign out</button>' : ''}
         </div>
-        <p class="dim" style="margin-top:12px">🔒 Stored only in your workspace on this device — never sent to us or anyone else.</p>
+        <p class="dim" style="margin-top:12px">🔒 Stored only in your workspace on this device — never sent to us or anyone else (unless you tick the signup beacon above, which sends name &amp; email once).</p>
       </div>
       <div class="card">
         <b>Pro license</b>
@@ -5426,14 +5586,23 @@ routes.account = async (main) => {
     const name = $('#acName', main).value.trim();
     const email = $('#acEmail', main).value.trim();
     if (!name && !email) { toast('Add a name or email to sign up', true); return; }
-    await api('PUT', '/api/account', { name, email, company: $('#acCompany', main).value.trim() });
-    toast(signedIn ? 'Account updated' : `Welcome to HELIX${name ? ', ' + name : ''} ⬢`);
+    const saved = await api('PUT', '/api/account', { name, email, company: $('#acCompany', main).value.trim() });
+    // opt-in signup beacon → Netlify Forms (hosted site only; fails silently elsewhere)
+    const beacon = $('#acBeacon', main);
+    if (!signedIn && beacon?.checked && location.protocol.startsWith('http') && saved.role !== 'owner') {
+      fetch('/', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'form-name': 'helix-signups', name, email, plan: 'free' }).toString() }).catch(() => {});
+    }
+    toast(saved.role === 'owner' ? '👑 Founder access unlocked — Command Center is in your sidebar'
+      : signedIn ? 'Account updated' : `Welcome to HELIX${name ? ', ' + name : ''} ⬢`);
+    await loadBoot(); // the sidebar renders from boot — pick up the new role now
     navigate();
   };
   const out = $('#acOut', main);
   if (out) out.onclick = async () => {
     await api('PUT', '/api/account', { name: '', email: '', company: '', licenseKey: '' });
     toast('Signed out — your workspace data stays on this device');
+    await loadBoot();
     navigate();
   };
   $('#acKeySave', main).onclick = async () => {

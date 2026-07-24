@@ -73,6 +73,25 @@ Tip: your Claude session has a **Stripe connector** available — authorize it i
 claude.ai connector settings and a session can create the products and payment
 links for you, then patch the placeholders itself.
 
+## Founder Command Center (owner analytics)
+
+Sign in inside the app (Account) with the founder email
+**luxeforgeio@gmail.com** — a 👑 Command Center appears in the sidebar with
+live device analytics (actions all-time, active days, most/least used
+features, workspace overview). A backup unlock: any license key starting
+with `HELIX-FOUNDER-`.
+
+Fleet numbers, honestly sourced (HELIX users' workspaces are private by
+architecture, so no app server ever sees them):
+
+- **Signups** → Netlify → your site → **Forms** → `helix-signups`. New users
+  who leave the "count my signup" box ticked send name + email there, once.
+  Turn on *Form notifications* to get an email for every signup.
+- **Paying customers, revenue, churn, FOUNDING-code uptake** → Stripe
+  Dashboard (Customers / Home). Stripe is the system of record.
+- Note: the signup form is registered at deploy time — after this zip's
+  first deploy, check Forms shows "helix-signups" as detected.
+
 ## Step 3 — Sanity checks after deploy
 
 - [ ] `/` loads, pricing cards show, "Launch free app" opens `/app.html`

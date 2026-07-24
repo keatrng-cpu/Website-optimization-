@@ -19,6 +19,12 @@ import { runQuickstart } from './quickstart.js';
 import { learnFromMessage, recordFeedback, aiLearn, MEMORY_PROPOSAL_SYSTEM } from './memory.js';
 import { aiPropose } from './ai.js';
 import { buildTickerStats, parseLabelLines, TICKER_SUGGEST_SYSTEM } from './stats.js';
+import { recordAction, telemetrySummary } from './telemetry.js';
+
+// Founder identities. Owner mode only ever exposes THIS device's own data —
+// per-device isolation is the security model, there is no cross-user access.
+const FOUNDER_EMAILS = ['luxeforgeio@gmail.com'];
+const FOUNDER_KEY_PREFIX = 'HELIX-FOUNDER-';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -63,6 +69,7 @@ export function createApp({ dataDir } = {}) {
         unread: s.inbox.filter((i) => !i.read).length,
         integrations: s.integrations.filter((i) => i.enabled).length,
       },
+      account: { name: s.account?.name || '', role: s.account?.role || 'member' },
     });
   });
 
@@ -712,8 +719,29 @@ export function createApp({ dataDir } = {}) {
     if (b.licenseKey !== undefined) a.licenseKey = clean(String(b.licenseKey), 80);
     if (a.name && !a.createdAt) a.createdAt = Date.now();
     if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; } // sign-out clears
+    // Role is derived, never client-set: founder email or founder key unlocks owner.
+    a.role = (FOUNDER_EMAILS.includes(a.email.toLowerCase()) || a.licenseKey.startsWith(FOUNDER_KEY_PREFIX)) ? 'owner' : 'member';
     store.save();
     sendJSON(res, 200, a);
+  });
+
+  // Owner-only: the founder Command Center. Server-enforced, and by
+  // architecture it can only ever report THIS device's own workspace.
+  router.get('/api/owner/stats', (req, res) => {
+    const a = S().account || {};
+    if (a.role !== 'owner') return sendJSON(res, 403, { error: 'owner access required — sign in with the founder account' });
+    const s = S();
+    sendJSON(res, 200, {
+      telemetry: telemetrySummary(s),
+      workspace: {
+        sites: s.sites.length, published: s.sites.filter((x) => x.published).length,
+        documents: s.documents.length, tasks: s.tasks.length,
+        automations: s.automations.filter((x) => x.enabled).length,
+        memories: s.memories.length, integrations: s.integrations.filter((x) => x.enabled).length,
+        chats: s.chats.length,
+      },
+      account: { name: a.name, email: a.email, role: a.role, createdAt: a.createdAt },
+    });
   });
 
   router.get('/api/settings', (req, res) => sendJSON(res, 200, redactedSettings()));
@@ -784,6 +812,7 @@ export function createApp({ dataDir } = {}) {
       if (pathname.startsWith('/api/')) {
         const m = router.match(req.method, pathname);
         if (!m) return notFound(res, `no route: ${req.method} ${pathname}`);
+        recordAction(S(), req.method, m.pattern);
         await m.handler(req, res, m.params, query);
         return;
       }
