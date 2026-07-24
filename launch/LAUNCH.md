@@ -7,8 +7,11 @@ Everything in `launch/site/` is a ready-to-deploy static bundle:
 | `index.html` | Marketing + pricing page (Free / Pro $24 with $19 founding / Agency $79) |
 | `app.html` | The full HELIX free-tier app — runs entirely in the visitor's browser |
 | `netlify.toml`, `_redirects` | Headers + `/app` pretty URL |
+| `manifest.webmanifest`, `icon.svg` | Makes the hosted app installable — visitors can add HELIX to their home screen, no app store needed |
 
 No build step, no dependencies, no secrets inside (scanned before commit).
+
+To refresh `app.html` after changing the app: `node demo/build.mjs && node launch/build.mjs` (the second step re-injects the PWA tags).
 
 ## Why this last leg happens on your desktop
 

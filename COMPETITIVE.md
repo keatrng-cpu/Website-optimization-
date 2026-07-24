@@ -117,6 +117,30 @@ edge plan that came out of it. Sources listed at the bottom.
 4. **Roadmap (from remaining gaps):** layout variants per section type;
    per-service integration relays (forge pattern); optional multi-workspace.
 
+## Field notes — PANTHEON (luxeforge.io), studied 2026-07-24
+
+Same product family (the founder's fitness platform), studied first-hand via
+FireCrawl as the reference implementation of the forge playbook in market:
+
+- **Names its trust principle** — "Determinism = trust: every quantitative
+  number is computed by deterministic code, never guessed by a language
+  model." HELIX had the same engineering rule but didn't market it; the
+  launch page now leads its pricing section with it.
+- **Capability stat band, not vanity metrics** — 139 biomarkers / 44 sports /
+  174 exercises / 5 languages: concrete, verifiable capability counts.
+  Adopted: 12 teammates / 12 power-ups / 13 SEO checks / 32 integrations /
+  47 tests — every figure counted from code before publishing.
+- **PWA installability as an acquisition edge** — "install free — add to your
+  home screen, no app store needed." Adopted: manifest + icon for the local
+  app and the hosted launch app (start_url /app.html).
+- **Per-day value anchoring** — "$1.33/day vs a $200+/mo coach." Adopted:
+  "$0.80/day vs a $500+/mo freelance marketer" under the Pro card.
+- **Metered lower tier** (10 messages/day on Base) — HELIX's free tier is
+  deliberately better: bring-your-own-key with no message caps, now stated
+  on the pricing card.
+- **Access-code redemption** on the pricing page — validates the planned
+  license-key Pro unlock flow.
+
 ## Sources
 - sintra.ai/blog/relevance-ai-alternative · saner.ai/blogs/best-sintra-alternatives · salesforge.ai/blog/sintra-ai-alternatives · marblism.com/blog/sintra-ai-alternatives · lindy.ai/blog/sintra-ai-alternatives · gumloop.com/blog/sintra-ai-alternatives
 - prospeo.io (Lindy & Relevance pricing/reviews) · bestautomationtools.ai/reviews/lindy-review · hackceleration.com/labs/review/lindy · agentshortlist.com/compare/lindy-vs-relevance-ai · work-management.org (Relevance review)

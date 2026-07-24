@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HELIX — Your AI Business Team. Free to run, built to ship.</title>
 <meta name="description" content="HELIX gives you 12 AI teammates that plan, write, build and market your website — running privately on your device for free. Upgrade for managed AI, hosting and automation relays.">
+<meta name="theme-color" content="#0a0d16">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬢</text></svg>">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon.svg">
 <style>
   :root{--bg:#0a0d16;--bg2:#10141f;--panel:#141928;--border:#232b42;--text:#e9edf7;--muted:#93a0bf;--dim:#5b6786;--accent:#6c8cff;--accent2:#9b6cff;--good:#22c55e;--warn:#f5b842}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -29,6 +32,10 @@
   .btn.ghost{color:var(--text);background:var(--panel)}
   .btn:hover{filter:brightness(1.1)}
   .trust{margin-top:26px;color:var(--dim);font-size:13px}
+  .statband{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:38px}
+  .statband div{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 22px;min-width:130px}
+  .statband b{display:block;font-size:26px;font-weight:800;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .statband span{color:var(--muted);font-size:12.5px}
   section{padding:64px 0}
   h2{font-size:clamp(24px,3.5vw,34px);font-weight:800;text-align:center;letter-spacing:-.3px}
   .sub{color:var(--muted);text-align:center;max-width:620px;margin:12px auto 0}
@@ -51,6 +58,7 @@
   .price{margin:14px 0 2px;font-size:38px;font-weight:800}
   .price small{font-size:14px;color:var(--muted);font-weight:600}
   .founding{color:var(--warn);font-size:13px;font-weight:700;margin-bottom:8px}
+  .anchor{color:var(--dim);font-size:12.5px;margin:-10px 0 14px}
   .plan ul{list-style:none;margin:18px 0 24px;display:grid;gap:9px;flex:1}
   .plan li{color:var(--muted);font-size:14px;padding-left:24px;position:relative}
   .plan li:before{content:"✓";position:absolute;left:0;color:var(--good);font-weight:700}
@@ -85,7 +93,14 @@
     <a class="btn primary" href="/app.html">⬢ Launch the free app — no signup</a>
     <a class="btn ghost" href="#pricing">See pricing</a>
   </div>
-  <div class="trust">Runs privately in your browser · Your data never leaves your device on the free tier · No account required</div>
+  <div class="trust">Runs privately in your browser · Your data never leaves your device on the free tier · No account required · Installs to your home screen — no app store needed</div>
+  <div class="statband">
+    <div><b>12</b><span>AI teammates</span></div>
+    <div><b>12</b><span>One-click power-ups</span></div>
+    <div><b>13</b><span>On-page SEO checks</span></div>
+    <div><b>32</b><span>Vetted integrations</span></div>
+    <div><b>47</b><span>Automated tests per release</span></div>
+  </div>
 </div></div>
 
 <section id="features"><div class="wrap">
@@ -122,7 +137,7 @@
         <li>All 12 teammates &amp; the full offline engine</li>
         <li>Brain memory &amp; learning</li>
         <li>Website Studio + SEO auditor</li>
-        <li>Bring your own AI key (Claude, OpenAI-compatible, Ollama)</li>
+        <li>Bring your own AI key (Claude, OpenAI-compatible, Ollama) — no message caps, ever</li>
         <li>Full data export — no lock-in</li>
         <li class="na">Managed AI (no API key needed)</li>
         <li class="na">Hosted sites on your domain</li>
@@ -141,6 +156,7 @@
         <li>Live URL audits &amp; market data feeds</li>
         <li>Priority feature access</li>
       </ul>
+      <div class="anchor">About $0.80/day — a freelance marketer runs $500+/mo.</div>
       <a class="btn primary" href="REPLACE_WITH_STRIPE_PRO_LINK">Get Pro</a>
     </div>
     <div class="plan">
@@ -155,7 +171,7 @@
       <a class="btn ghost" href="REPLACE_WITH_STRIPE_AGENCY_LINK">Get Agency</a>
     </div>
   </div>
-  <div class="honesty"><b>Our honesty policy:</b> HELIX never fabricates numbers — every stat in the app is computed from your real workspace, and anything sampled or estimated is labeled as such. Paid features listed here ship at launch; if something isn't live yet when you subscribe, we'll tell you before you pay, not after.</div>
+  <div class="honesty"><b>Determinism = trust.</b> Every number in HELIX — SEO scores, pageviews, task counts, ticker stats — is computed by code from your real workspace. The AI explains, plans and writes, but it is not allowed to invent a single number, and anything sampled or estimated is labeled as such. Paid features listed here ship at launch; if something isn't live yet when you subscribe, we'll tell you before you pay, not after.</div>
 </div></section>
 
 <section style="background:var(--bg2)"><div class="wrap">

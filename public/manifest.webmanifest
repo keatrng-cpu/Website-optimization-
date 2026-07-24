@@ -1,0 +1,12 @@
+{
+  "name": "HELIX — Your AI Business Team",
+  "short_name": "HELIX",
+  "description": "12 AI teammates that plan, write, build and market your business — private by architecture.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0d16",
+  "theme_color": "#0a0d16",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
