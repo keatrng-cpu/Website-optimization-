@@ -1397,10 +1397,18 @@ routes.quickstart = async (main) => {
 
 routes.integrations = async (main) => {
   await loadBoot();
-  const [presets, connected] = await Promise.all([
+  const [presets, connected, usage] = await Promise.all([
     api('GET', '/api/integrations/presets'),
     api('GET', '/api/integrations'),
+    api('GET', '/api/integrations/usage').catch(() => ({ totals: { calls: 0, ok: 0, failed: 0 }, recent: [] })),
   ]);
+  const usageLine = (i) => {
+    const u = i.usage;
+    if (!u || !u.calls) return '';
+    const rate = Math.round((u.ok / u.calls) * 100);
+    const avg = Math.round(u.totalMs / u.calls);
+    return `<div class="dim" style="margin-top:4px">📊 ${u.calls} call${u.calls > 1 ? 's' : ''} · ${rate}% ok · ~${avg}ms · last ${timeAgo(u.lastUsed)}</div>`;
+  };
   const statusBadge = (i) => {
     if (!i.lastTest) return '<span class="badge">not tested</span>';
     if (i.lastTest.sandbox) return '<span class="badge warn">saved</span>';
@@ -1408,7 +1416,24 @@ routes.integrations = async (main) => {
   };
   main.innerHTML = `<div class="page">
     <div class="page-head"><div><h1>🔌 Integrations</h1>
-      <p>Connect the tools your business already runs on. Bring your own keys — everything is stored locally on your machine and used to make real, authenticated calls. Nothing is pre-connected, and no key ever leaves your device.</p></div></div>
+      <p>Connect the tools your business already runs on with your own keys. <b>Private by architecture:</b> HELIX has no vendor server — your keys live only in your local data file, are shown to no one (only a masked hint, even to you), and leave this machine solely as auth headers to the service you connected. Usage below tracks metadata only (calls, status, latency) — never keys or content.</p></div></div>
+
+    ${usage.totals.calls ? `
+    <div class="grid c4" style="margin-bottom:18px">
+      <div class="card stat"><div class="num">${usage.totals.calls}</div><div class="lbl">API calls made</div></div>
+      <div class="card stat"><div class="num">${usage.totals.calls ? Math.round((usage.totals.ok / usage.totals.calls) * 100) : 0}%</div><div class="lbl">Success rate</div></div>
+      <div class="card stat"><div class="num">${usage.totals.failed}</div><div class="lbl">Failed calls</div></div>
+      <div class="card stat"><div class="num">${connected.filter((i) => i.enabled).length}</div><div class="lbl">Active connections</div></div>
+    </div>
+    ${usage.recent.length ? `<div class="card pad0" style="margin-bottom:22px">
+      <div class="row spread" style="padding:12px 16px;border-bottom:1px solid var(--border)"><b>Recent activity</b><span class="dim">metadata only</span></div>
+      ${usage.recent.slice(0, 8).map((r) => `
+        <div class="list-row" style="cursor:default">
+          <span>${r.ok ? '✅' : '❌'}</span>
+          <span style="flex:1"><b>${esc(r.integration)}</b> <span class="dim">${esc(r.method)} ${esc(r.path)}</span></span>
+          <span class="badge">${r.status || '—'}</span><span class="dim">${r.ms}ms · ${timeAgo(r.at)} · ${esc(r.via)}</span>
+        </div>`).join('')}
+    </div>` : ''}` : ''}
 
     ${connected.length ? `
     <h2 style="font-size:15px;margin:6px 0 12px">Your connections</h2>
@@ -1420,10 +1445,12 @@ routes.integrations = async (main) => {
               <span><b>${esc(i.name)}</b><div class="dim">${esc(i.baseUrl || '—')}</div></span></div>
             ${statusBadge(i)}
           </div>
-          <div class="dim" style="margin:10px 0">
+          <div class="dim" style="margin:10px 0 0">
             ${i.type.toUpperCase()} · ${i.hasSecret ? `key ${esc(i.secretHint)}` : 'no key'}
             ${i.lastTest ? ` · ${esc(i.lastTest.detail)}${i.lastTest.ms ? ` (${i.lastTest.ms}ms)` : ''}` : ''}
           </div>
+          ${usageLine(i)}
+          <div style="margin-bottom:10px"></div>
           <div class="row">
             <button class="btn sm" data-test="${i.id}">⚡ Test</button>
             <button class="btn ghost sm" data-toggle="${i.id}:${!i.enabled}">${i.enabled ? '⏸ Disable' : '▶ Enable'}</button>

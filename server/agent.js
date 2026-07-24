@@ -7,7 +7,7 @@ import { uid } from './store.js';
 import { POWERUP_MAP } from './powerups.js';
 import { PALETTES, slugify, defaultSections, renderSite } from './sites.js';
 import { auditHTML } from './seo.js';
-import { callIntegration } from './integrations.js';
+import { callIntegration, trackUsage } from './integrations.js';
 import { GUARDRAILS } from './helpers.js';
 
 // Each tool: name, description, JSON-schema input, and an async run(ctx, args).
@@ -127,6 +127,8 @@ export function buildTools() {
         const integ = list.find((i) => i.id === integration || i.name.toLowerCase() === String(integration).toLowerCase());
         if (!integ) throw new Error(`no connected integration matching "${integration}"`);
         const res = await callIntegration(integ, { method, path, body });
+        trackUsage(ctx.store.state, integ, { method: method || 'GET', path: path || '/', status: res.status, ok: res.ok, ms: res.ms, via: 'agent' });
+        ctx.store.save();
         return { integration: integ.name, status: res.status, ok: res.ok, data: res.data };
       },
     },

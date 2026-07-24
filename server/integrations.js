@@ -126,6 +126,68 @@ export const PRESETS = [
     desc: 'Trigger Make / Zapier / n8n scenarios with your data.',
   },
   {
+    id: 'x-twitter', name: 'X (Twitter)', icon: '𝕏', category: 'Social', type: 'rest',
+    baseUrl: 'https://api.x.com', testPath: '/2/users/me',
+    auth: { kind: 'bearer' }, keyLabel: 'OAuth 2.0 access token (or app bearer)', keyHint: '',
+    desc: 'Automate posting and read your account — Soshie’s drafts, actually published.',
+  },
+  {
+    id: 'meta', name: 'Meta (Facebook & Instagram)', icon: '📘', category: 'Social', type: 'rest',
+    baseUrl: 'https://graph.facebook.com', testPath: '/v19.0/me',
+    auth: { kind: 'query', name: 'access_token' }, keyLabel: 'Graph API access token', keyHint: 'EAAG…',
+    desc: 'Pages and Instagram publishing via the Graph API — automate social marketing.',
+  },
+  {
+    id: 'linkedin', name: 'LinkedIn', icon: '💼', category: 'Social', type: 'rest',
+    baseUrl: 'https://api.linkedin.com', testPath: '/v2/userinfo',
+    auth: { kind: 'bearer' }, keyLabel: 'OAuth 2.0 access token', keyHint: '',
+    desc: 'Share posts and read profile data for B2B marketing automation.',
+  },
+  {
+    id: 'firecrawl', name: 'FireCrawl', icon: '🔥', category: 'Research', type: 'rest',
+    baseUrl: 'https://api.firecrawl.dev', testPath: '/v1/team/credit-usage',
+    auth: { kind: 'bearer' }, keyLabel: 'API key', keyHint: 'fc-…',
+    desc: 'Scrape and crawl any site into clean data — deep research for your team.',
+  },
+  {
+    id: 'perplexity', name: 'Perplexity', icon: '🔮', category: 'Research', type: 'rest',
+    baseUrl: 'https://api.perplexity.ai', testPath: '/chat/completions',
+    testMethod: 'POST', testBody: { model: 'sonar', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] },
+    auth: { kind: 'bearer' }, keyLabel: 'API key', keyHint: 'pplx-…',
+    desc: 'Sourced, cited web research on demand.',
+  },
+  {
+    id: 'apify', name: 'Apify', icon: '🕷️', category: 'Research', type: 'rest',
+    baseUrl: 'https://api.apify.com', testPath: '/v2/users/me',
+    auth: { kind: 'bearer' }, keyLabel: 'API token', keyHint: 'apify_api_…',
+    desc: 'Thousands of ready-made scrapers (Actors) for web data extraction.',
+  },
+  {
+    id: 'resend', name: 'Resend', icon: '📮', category: 'Email', type: 'rest',
+    baseUrl: 'https://api.resend.com', testPath: '/domains',
+    auth: { kind: 'bearer' }, keyLabel: 'API key', keyHint: 're_…',
+    desc: 'Modern email sending for the campaigns Emmie writes.',
+  },
+  {
+    id: 'brevo', name: 'Brevo', icon: '💚', category: 'Email', type: 'rest',
+    baseUrl: 'https://api.brevo.com', testPath: '/v3/account',
+    auth: { kind: 'header', name: 'api-key' }, keyLabel: 'API key', keyHint: 'xkeysib-…',
+    desc: 'Email + SMS campaigns, contacts, and automation.',
+  },
+  {
+    id: 'pagespeed', name: 'Google PageSpeed', icon: '🚦', category: 'SEO', type: 'rest',
+    baseUrl: 'https://www.googleapis.com', testPath: '/pagespeedonline/v5/runPagespeed?url=https%3A%2F%2Fexample.com',
+    auth: { kind: 'query', name: 'key' }, keyLabel: 'API key', keyHint: 'AIza…',
+    desc: 'Real Core Web Vitals + performance scores to pair with HELIX SEO audits.',
+  },
+  {
+    id: 'discord', name: 'Discord (Webhook)', icon: '🎮', category: 'Notifications', type: 'webhook',
+    baseUrl: 'https://discord.com/api/webhooks/…', testPath: '',
+    auth: { kind: 'none' }, keyLabel: 'Webhook URL', keyHint: 'https://discord.com/api/webhooks/…',
+    urlIsSecret: true, testBody: { content: '✅ HELIX connection test' },
+    desc: 'Post team updates and finished deliverables to a channel.',
+  },
+  {
     id: 'custom-rest', name: 'Custom REST API', icon: '🔗', category: 'Custom', type: 'rest',
     baseUrl: '', testPath: '/', auth: { kind: 'bearer' }, keyLabel: 'Token (optional)', keyHint: '',
     desc: 'Any HTTP JSON API. You set the base URL, auth, and a health path.',
@@ -162,7 +224,33 @@ export function redactIntegration(i) {
     authHeaderName: i.auth?.name, enabled: i.enabled,
     hasSecret: !!i.authValue, secretHint: mask(i.authValue),
     lastTest: i.lastTest || null, createdAt: i.createdAt,
+    usage: i.usage || { calls: 0, ok: 0, failed: 0, totalMs: 0, lastUsed: null, lastStatus: null },
   };
+}
+
+// Usage tracking: metadata only (method, path, status, latency) — never keys,
+// never request/response bodies. Counters live on the integration; a bounded
+// recent-activity log lives on state.usageLog.
+export function trackUsage(state, integ, { method = 'GET', path = '', status = 0, ok = false, ms = 0, via = 'app' }) {
+  integ.usage ??= { calls: 0, ok: 0, failed: 0, totalMs: 0, lastUsed: null, lastStatus: null };
+  integ.usage.calls += 1;
+  if (ok) integ.usage.ok += 1; else integ.usage.failed += 1;
+  integ.usage.totalMs += ms;
+  integ.usage.lastUsed = Date.now();
+  integ.usage.lastStatus = status;
+  state.usageLog ??= [];
+  state.usageLog.unshift({ integration: integ.name, method, path: String(path).split('?')[0].slice(0, 120), status, ok, ms, via, at: Date.now() });
+  if (state.usageLog.length > 200) state.usageLog.length = 200;
+}
+
+export function usageSummary(state) {
+  const totals = { calls: 0, ok: 0, failed: 0 };
+  for (const i of state.integrations || []) {
+    const u = i.usage;
+    if (!u) continue;
+    totals.calls += u.calls; totals.ok += u.ok; totals.failed += u.failed;
+  }
+  return { totals, recent: (state.usageLog || []).slice(0, 20) };
 }
 
 function buildRequest(i, pathOverride) {
@@ -216,7 +304,7 @@ export async function testIntegration(i) {
       url = i.baseUrl;
       headers = { 'content-type': 'application/json' };
       method = 'POST';
-      body = JSON.stringify({ text: '✅ HELIX connection test' });
+      body = JSON.stringify(i.testBody || { text: '✅ HELIX connection test' });
     } else if (i.type === 'mcp') {
       const r = buildRequest(i, '');
       url = r.url; headers = { ...r.headers, 'content-type': 'application/json' };
@@ -224,7 +312,12 @@ export async function testIntegration(i) {
       body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
     } else {
       const r = buildRequest(i);
-      url = r.url; headers = r.headers; method = 'GET';
+      url = r.url; headers = r.headers;
+      method = i.testMethod || 'GET';
+      if (i.testBody !== undefined && method !== 'GET') {
+        headers['content-type'] = 'application/json';
+        body = JSON.stringify(i.testBody);
+      }
     }
     if (!/^https?:\/\//i.test(url)) throw new Error('base URL must start with http(s)://');
     const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) });

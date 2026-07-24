@@ -1699,6 +1699,68 @@ const PRESETS = [
     desc: 'Trigger Make / Zapier / n8n scenarios with your data.',
   },
   {
+    id: 'x-twitter', name: 'X (Twitter)', icon: '𝕏', category: 'Social', type: 'rest',
+    baseUrl: 'https://api.x.com', testPath: '/2/users/me',
+    auth: { kind: 'bearer' }, keyLabel: 'OAuth 2.0 access token (or app bearer)', keyHint: '',
+    desc: 'Automate posting and read your account — Soshie’s drafts, actually published.',
+  },
+  {
+    id: 'meta', name: 'Meta (Facebook & Instagram)', icon: '📘', category: 'Social', type: 'rest',
+    baseUrl: 'https://graph.facebook.com', testPath: '/v19.0/me',
+    auth: { kind: 'query', name: 'access_token' }, keyLabel: 'Graph API access token', keyHint: 'EAAG…',
+    desc: 'Pages and Instagram publishing via the Graph API — automate social marketing.',
+  },
+  {
+    id: 'linkedin', name: 'LinkedIn', icon: '💼', category: 'Social', type: 'rest',
+    baseUrl: 'https://api.linkedin.com', testPath: '/v2/userinfo',
+    auth: { kind: 'bearer' }, keyLabel: 'OAuth 2.0 access token', keyHint: '',
+    desc: 'Share posts and read profile data for B2B marketing automation.',
+  },
+  {
+    id: 'firecrawl', name: 'FireCrawl', icon: '🔥', category: 'Research', type: 'rest',
+    baseUrl: 'https://api.firecrawl.dev', testPath: '/v1/team/credit-usage',
+    auth: { kind: 'bearer' }, keyLabel: 'API key', keyHint: 'fc-…',
+    desc: 'Scrape and crawl any site into clean data — deep research for your team.',
+  },
+  {
+    id: 'perplexity', name: 'Perplexity', icon: '🔮', category: 'Research', type: 'rest',
+    baseUrl: 'https://api.perplexity.ai', testPath: '/chat/completions',
+    testMethod: 'POST', testBody: { model: 'sonar', max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] },
+    auth: { kind: 'bearer' }, keyLabel: 'API key', keyHint: 'pplx-…',
+    desc: 'Sourced, cited web research on demand.',
+  },
+  {
+    id: 'apify', name: 'Apify', icon: '🕷️', category: 'Research', type: 'rest',
+    baseUrl: 'https://api.apify.com', testPath: '/v2/users/me',
+    auth: { kind: 'bearer' }, keyLabel: 'API token', keyHint: 'apify_api_…',
+    desc: 'Thousands of ready-made scrapers (Actors) for web data extraction.',
+  },
+  {
+    id: 'resend', name: 'Resend', icon: '📮', category: 'Email', type: 'rest',
+    baseUrl: 'https://api.resend.com', testPath: '/domains',
+    auth: { kind: 'bearer' }, keyLabel: 'API key', keyHint: 're_…',
+    desc: 'Modern email sending for the campaigns Emmie writes.',
+  },
+  {
+    id: 'brevo', name: 'Brevo', icon: '💚', category: 'Email', type: 'rest',
+    baseUrl: 'https://api.brevo.com', testPath: '/v3/account',
+    auth: { kind: 'header', name: 'api-key' }, keyLabel: 'API key', keyHint: 'xkeysib-…',
+    desc: 'Email + SMS campaigns, contacts, and automation.',
+  },
+  {
+    id: 'pagespeed', name: 'Google PageSpeed', icon: '🚦', category: 'SEO', type: 'rest',
+    baseUrl: 'https://www.googleapis.com', testPath: '/pagespeedonline/v5/runPagespeed?url=https%3A%2F%2Fexample.com',
+    auth: { kind: 'query', name: 'key' }, keyLabel: 'API key', keyHint: 'AIza…',
+    desc: 'Real Core Web Vitals + performance scores to pair with HELIX SEO audits.',
+  },
+  {
+    id: 'discord', name: 'Discord (Webhook)', icon: '🎮', category: 'Notifications', type: 'webhook',
+    baseUrl: 'https://discord.com/api/webhooks/…', testPath: '',
+    auth: { kind: 'none' }, keyLabel: 'Webhook URL', keyHint: 'https://discord.com/api/webhooks/…',
+    urlIsSecret: true, testBody: { content: '✅ HELIX connection test' },
+    desc: 'Post team updates and finished deliverables to a channel.',
+  },
+  {
     id: 'custom-rest', name: 'Custom REST API', icon: '🔗', category: 'Custom', type: 'rest',
     baseUrl: '', testPath: '/', auth: { kind: 'bearer' }, keyLabel: 'Token (optional)', keyHint: '',
     desc: 'Any HTTP JSON API. You set the base URL, auth, and a health path.',
@@ -1735,7 +1797,33 @@ function redactIntegration(i) {
     authHeaderName: i.auth?.name, enabled: i.enabled,
     hasSecret: !!i.authValue, secretHint: mask(i.authValue),
     lastTest: i.lastTest || null, createdAt: i.createdAt,
+    usage: i.usage || { calls: 0, ok: 0, failed: 0, totalMs: 0, lastUsed: null, lastStatus: null },
   };
+}
+
+// Usage tracking: metadata only (method, path, status, latency) — never keys,
+// never request/response bodies. Counters live on the integration; a bounded
+// recent-activity log lives on state.usageLog.
+function trackUsage(state, integ, { method = 'GET', path = '', status = 0, ok = false, ms = 0, via = 'app' }) {
+  integ.usage ??= { calls: 0, ok: 0, failed: 0, totalMs: 0, lastUsed: null, lastStatus: null };
+  integ.usage.calls += 1;
+  if (ok) integ.usage.ok += 1; else integ.usage.failed += 1;
+  integ.usage.totalMs += ms;
+  integ.usage.lastUsed = Date.now();
+  integ.usage.lastStatus = status;
+  state.usageLog ??= [];
+  state.usageLog.unshift({ integration: integ.name, method, path: String(path).split('?')[0].slice(0, 120), status, ok, ms, via, at: Date.now() });
+  if (state.usageLog.length > 200) state.usageLog.length = 200;
+}
+
+function usageSummary(state) {
+  const totals = { calls: 0, ok: 0, failed: 0 };
+  for (const i of state.integrations || []) {
+    const u = i.usage;
+    if (!u) continue;
+    totals.calls += u.calls; totals.ok += u.ok; totals.failed += u.failed;
+  }
+  return { totals, recent: (state.usageLog || []).slice(0, 20) };
 }
 
 function buildRequest(i, pathOverride) {
@@ -1789,7 +1877,7 @@ async function testIntegration(i) {
       url = i.baseUrl;
       headers = { 'content-type': 'application/json' };
       method = 'POST';
-      body = JSON.stringify({ text: '✅ HELIX connection test' });
+      body = JSON.stringify(i.testBody || { text: '✅ HELIX connection test' });
     } else if (i.type === 'mcp') {
       const r = buildRequest(i, '');
       url = r.url; headers = { ...r.headers, 'content-type': 'application/json' };
@@ -1797,7 +1885,12 @@ async function testIntegration(i) {
       body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
     } else {
       const r = buildRequest(i);
-      url = r.url; headers = r.headers; method = 'GET';
+      url = r.url; headers = r.headers;
+      method = i.testMethod || 'GET';
+      if (i.testBody !== undefined && method !== 'GET') {
+        headers['content-type'] = 'application/json';
+        body = JSON.stringify(i.testBody);
+      }
     }
     if (!/^https?:\/\//i.test(url)) throw new Error('base URL must start with http(s)://');
     const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -1937,6 +2030,8 @@ function buildTools() {
         const integ = list.find((i) => i.id === integration || i.name.toLowerCase() === String(integration).toLowerCase());
         if (!integ) throw new Error(`no connected integration matching "${integration}"`);
         const res = await callIntegration(integ, { method, path, body });
+        trackUsage(ctx.store.state, integ, { method: method || 'GET', path: path || '/', status: res.status, ok: res.ok, ms: res.ms, via: 'agent' });
+        ctx.store.save();
         return { integration: integ.name, status: res.status, ok: res.ok, data: res.data };
       },
     },
@@ -2539,7 +2634,7 @@ const DEFAULTS = () => ({
   },
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
-  feedback: {},
+  feedback: {}, usageLog: [],
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -3114,6 +3209,7 @@ async function handle(method, pathname, query, body) {
 
     case 'integrations': {
       if (p[1] === 'presets') return ok(PRESETS);
+      if (p[1] === 'usage') return ok(usageSummary(db));
       if (!id && method === 'GET') return ok(db.integrations.map(redactIntegration));
       if (!id && method === 'POST') {
         const preset = PRESET_MAP[body.preset] || PRESET_MAP['custom-rest'];
@@ -3125,6 +3221,8 @@ async function handle(method, pathname, query, body) {
           testPath: String(body.testPath ?? preset.testPath ?? ''),
           auth: body.authKind ? { kind: body.authKind, name: body.authHeaderName || preset.auth?.name } : { ...preset.auth },
           extraHeaders: preset.extraHeaders || {},
+          testMethod: body.testMethod || preset.testMethod || undefined,
+          testBody: body.testBody !== undefined ? body.testBody : preset.testBody,
           authValue: body.secret !== undefined ? String(body.secret) : '',
           enabled: body.enabled !== false, lastTest: null, createdAt: Date.now(),
         };
@@ -4701,10 +4799,18 @@ routes.quickstart = async (main) => {
 
 routes.integrations = async (main) => {
   await loadBoot();
-  const [presets, connected] = await Promise.all([
+  const [presets, connected, usage] = await Promise.all([
     api('GET', '/api/integrations/presets'),
     api('GET', '/api/integrations'),
+    api('GET', '/api/integrations/usage').catch(() => ({ totals: { calls: 0, ok: 0, failed: 0 }, recent: [] })),
   ]);
+  const usageLine = (i) => {
+    const u = i.usage;
+    if (!u || !u.calls) return '';
+    const rate = Math.round((u.ok / u.calls) * 100);
+    const avg = Math.round(u.totalMs / u.calls);
+    return `<div class="dim" style="margin-top:4px">📊 ${u.calls} call${u.calls > 1 ? 's' : ''} · ${rate}% ok · ~${avg}ms · last ${timeAgo(u.lastUsed)}</div>`;
+  };
   const statusBadge = (i) => {
     if (!i.lastTest) return '<span class="badge">not tested</span>';
     if (i.lastTest.sandbox) return '<span class="badge warn">saved</span>';
@@ -4712,7 +4818,24 @@ routes.integrations = async (main) => {
   };
   main.innerHTML = `<div class="page">
     <div class="page-head"><div><h1>🔌 Integrations</h1>
-      <p>Connect the tools your business already runs on. Bring your own keys — everything is stored locally on your machine and used to make real, authenticated calls. Nothing is pre-connected, and no key ever leaves your device.</p></div></div>
+      <p>Connect the tools your business already runs on with your own keys. <b>Private by architecture:</b> HELIX has no vendor server — your keys live only in your local data file, are shown to no one (only a masked hint, even to you), and leave this machine solely as auth headers to the service you connected. Usage below tracks metadata only (calls, status, latency) — never keys or content.</p></div></div>
+
+    ${usage.totals.calls ? `
+    <div class="grid c4" style="margin-bottom:18px">
+      <div class="card stat"><div class="num">${usage.totals.calls}</div><div class="lbl">API calls made</div></div>
+      <div class="card stat"><div class="num">${usage.totals.calls ? Math.round((usage.totals.ok / usage.totals.calls) * 100) : 0}%</div><div class="lbl">Success rate</div></div>
+      <div class="card stat"><div class="num">${usage.totals.failed}</div><div class="lbl">Failed calls</div></div>
+      <div class="card stat"><div class="num">${connected.filter((i) => i.enabled).length}</div><div class="lbl">Active connections</div></div>
+    </div>
+    ${usage.recent.length ? `<div class="card pad0" style="margin-bottom:22px">
+      <div class="row spread" style="padding:12px 16px;border-bottom:1px solid var(--border)"><b>Recent activity</b><span class="dim">metadata only</span></div>
+      ${usage.recent.slice(0, 8).map((r) => `
+        <div class="list-row" style="cursor:default">
+          <span>${r.ok ? '✅' : '❌'}</span>
+          <span style="flex:1"><b>${esc(r.integration)}</b> <span class="dim">${esc(r.method)} ${esc(r.path)}</span></span>
+          <span class="badge">${r.status || '—'}</span><span class="dim">${r.ms}ms · ${timeAgo(r.at)} · ${esc(r.via)}</span>
+        </div>`).join('')}
+    </div>` : ''}` : ''}
 
     ${connected.length ? `
     <h2 style="font-size:15px;margin:6px 0 12px">Your connections</h2>
@@ -4724,10 +4847,12 @@ routes.integrations = async (main) => {
               <span><b>${esc(i.name)}</b><div class="dim">${esc(i.baseUrl || '—')}</div></span></div>
             ${statusBadge(i)}
           </div>
-          <div class="dim" style="margin:10px 0">
+          <div class="dim" style="margin:10px 0 0">
             ${i.type.toUpperCase()} · ${i.hasSecret ? `key ${esc(i.secretHint)}` : 'no key'}
             ${i.lastTest ? ` · ${esc(i.lastTest.detail)}${i.lastTest.ms ? ` (${i.lastTest.ms}ms)` : ''}` : ''}
           </div>
+          ${usageLine(i)}
+          <div style="margin-bottom:10px"></div>
           <div class="row">
             <button class="btn sm" data-test="${i.id}">⚡ Test</button>
             <button class="btn ghost sm" data-toggle="${i.id}:${!i.enabled}">${i.enabled ? '⏸ Disable' : '▶ Enable'}</button>

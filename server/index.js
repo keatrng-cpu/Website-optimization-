@@ -11,7 +11,7 @@ import { computeNextRun, runAutomation, startScheduler } from './automations.js'
 import { PALETTES, slugify, defaultSections, renderSite, parseSiteContent, siteGenPrompt, applyGeneratedContent } from './sites.js';
 import { auditHTML, fetchAndAudit } from './seo.js';
 import { recordView, summarize } from './analytics.js';
-import { PRESETS, PRESET_MAP, redactIntegration, testIntegration } from './integrations.js';
+import { PRESETS, PRESET_MAP, redactIntegration, testIntegration, trackUsage, usageSummary } from './integrations.js';
 import { generate, makeToolCaller } from './ai.js';
 import { toolMeta, buildTools, runAgent, runPlanner, AGENT_SYSTEM } from './agent.js';
 import { buildExport } from './export-site.js';
@@ -574,6 +574,8 @@ export function createApp({ dataDir } = {}) {
         ? { kind: b.authKind, name: b.authHeaderName || preset.auth?.name }
         : { ...preset.auth },
       extraHeaders: preset.extraHeaders || {},
+      testMethod: b.testMethod || preset.testMethod || undefined,
+      testBody: b.testBody !== undefined ? b.testBody : preset.testBody,
       authValue: b.secret !== undefined ? String(b.secret) : '',
       enabled: b.enabled !== false, lastTest: null, createdAt: Date.now(),
     };
@@ -608,9 +610,11 @@ export function createApp({ dataDir } = {}) {
     if (!integ) return notFound(res);
     const result = await testIntegration(integ);
     integ.lastTest = result;
+    trackUsage(S(), integ, { method: integ.testMethod || 'GET', path: integ.testPath || '/', status: result.status, ok: result.ok, ms: result.ms, via: 'test' });
     store.save();
     sendJSON(res, 200, { integration: redactIntegration(integ), result });
   });
+  router.get('/api/integrations/usage', (req, res) => sendJSON(res, 200, usageSummary(S())));
 
   // ---------- agent / autopilot ----------
   const agentCtx = () => ({ store, ask: (helperId, message) => askHelper(helperId, [{ role: 'user', content: message }]) });

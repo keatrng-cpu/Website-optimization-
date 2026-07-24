@@ -832,6 +832,82 @@ test('AI-assisted memory: aiPropose is silent without a configured provider', as
   assert.equal(await aiPropose({ provider: 'anthropic', apiKey: '' }, 'sys', 'msg'), '');
 });
 
+test('trusted catalog: social, research, email, SEO presets fully specified', async () => {
+  const presets = (await api('GET', '/api/integrations/presets')).data;
+  const expect = {
+    'x-twitter': ['Social', 'bearer'], meta: ['Social', 'query'], linkedin: ['Social', 'bearer'],
+    firecrawl: ['Research', 'bearer'], perplexity: ['Research', 'bearer'], apify: ['Research', 'bearer'],
+    resend: ['Email', 'bearer'], brevo: ['Email', 'header'], pagespeed: ['SEO', 'query'],
+  };
+  for (const [id, [cat, auth]] of Object.entries(expect)) {
+    const p = presets.find((x) => x.id === id);
+    assert.ok(p, `preset ${id}`);
+    assert.equal(p.category, cat, `${id} category`);
+    assert.equal(p.auth.kind, auth, `${id} auth kind`);
+    assert.ok(p.baseUrl.startsWith('https://'), `${id} https base`);
+  }
+  assert.equal(presets.find((x) => x.id === 'perplexity').testMethod, 'POST', 'POST-only APIs get a POST test');
+  assert.ok(presets.find((x) => x.id === 'discord').testBody.content, 'discord webhook uses its native body');
+});
+
+test('usage tracking: real calls are metered — metadata only, never secrets', async () => {
+  const http = await import('node:http');
+  let reqCount = 0;
+  const mock = http.createServer((rq, rs) => {
+    reqCount++;
+    if (rq.url.includes('boom')) { rs.writeHead(500); rs.end('err'); return; }
+    rs.writeHead(200); rs.end('{"ok":true}');
+  });
+  await new Promise((r) => mock.listen(0, r));
+  const url = `http://127.0.0.1:${mock.address().port}`;
+
+  const integ = await api('POST', '/api/integrations', {
+    preset: 'custom-rest', name: 'Metered API', baseUrl: url, testPath: '/health', authKind: 'bearer', secret: 'sk-secret-999',
+  });
+  // 1 test + 1 agent success + 1 agent failure
+  await api('POST', `/api/integrations/${integ.data.id}/test`, {});
+  await api('POST', '/api/agent/act', { tool: 'call_integration', args: { integration: 'Metered API', path: '/v1/data' } });
+  await api('POST', '/api/agent/act', { tool: 'call_integration', args: { integration: 'Metered API', path: '/boom' } });
+
+  const list = (await api('GET', '/api/integrations')).data;
+  const u = list.find((i) => i.id === integ.data.id).usage;
+  assert.equal(u.calls, 3, 'every real call metered');
+  assert.equal(u.ok, 2);
+  assert.equal(u.failed, 1);
+  assert.ok(u.lastUsed > 0 && u.lastStatus === 500);
+  assert.equal(reqCount, 3, 'counters match actual HTTP traffic');
+
+  const usage = (await api('GET', '/api/integrations/usage')).data;
+  assert.ok(usage.totals.calls >= 3);
+  assert.ok(usage.recent.some((r) => r.integration === 'Metered API' && r.via === 'agent'));
+  const dumped = JSON.stringify(usage);
+  assert.ok(!dumped.includes('sk-secret-999'), 'usage log never contains the key');
+
+  await api('DELETE', `/api/integrations/${integ.data.id}`);
+  await new Promise((r) => mock.close(r));
+});
+
+test('usage tracking: POST-style connection tests send the configured body', async () => {
+  const http = await import('node:http');
+  let seen = null;
+  const mock = http.createServer((rq, rs) => {
+    let raw = '';
+    rq.on('data', (c) => raw += c);
+    rq.on('end', () => { seen = { method: rq.method, body: raw }; rs.writeHead(200); rs.end('{}'); });
+  });
+  await new Promise((r) => mock.listen(0, r));
+  const integ = await api('POST', '/api/integrations', {
+    preset: 'custom-rest', name: 'PostTest', baseUrl: `http://127.0.0.1:${mock.address().port}`,
+    testPath: '/ping', authKind: 'none', testMethod: 'POST', testBody: { ping: 1 },
+  });
+  const t = await api('POST', `/api/integrations/${integ.data.id}/test`, {});
+  assert.equal(t.data.result.ok, true);
+  assert.equal(seen.method, 'POST', 'test honored the configured method');
+  assert.equal(JSON.parse(seen.body).ping, 1, 'test sent the configured body');
+  await api('DELETE', `/api/integrations/${integ.data.id}`);
+  await new Promise((r) => mock.close(r));
+});
+
 test('spa: serves index.html at / and as fallback', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);

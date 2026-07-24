@@ -14,7 +14,7 @@ const DEFAULTS = () => ({
   },
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
-  feedback: {},
+  feedback: {}, usageLog: [],
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
 });
 
@@ -589,6 +589,7 @@ async function handle(method, pathname, query, body) {
 
     case 'integrations': {
       if (p[1] === 'presets') return ok(PRESETS);
+      if (p[1] === 'usage') return ok(usageSummary(db));
       if (!id && method === 'GET') return ok(db.integrations.map(redactIntegration));
       if (!id && method === 'POST') {
         const preset = PRESET_MAP[body.preset] || PRESET_MAP['custom-rest'];
@@ -600,6 +601,8 @@ async function handle(method, pathname, query, body) {
           testPath: String(body.testPath ?? preset.testPath ?? ''),
           auth: body.authKind ? { kind: body.authKind, name: body.authHeaderName || preset.auth?.name } : { ...preset.auth },
           extraHeaders: preset.extraHeaders || {},
+          testMethod: body.testMethod || preset.testMethod || undefined,
+          testBody: body.testBody !== undefined ? body.testBody : preset.testBody,
           authValue: body.secret !== undefined ? String(body.secret) : '',
           enabled: body.enabled !== false, lastTest: null, createdAt: Date.now(),
         };

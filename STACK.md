@@ -55,8 +55,26 @@ key; the app makes real authenticated calls and everything stays in your local
 | Airtable | Data | PAT | pipelines, content |
 | Shopify | E-commerce | admin token | base URL = your store domain |
 | Slack | Notifications | webhook URL | post updates |
+| Discord | Notifications | webhook URL | post updates |
+| X (Twitter) | Social | OAuth 2.0 token | automate posting |
+| Meta (FB + IG) | Social | Graph token | pages & IG publishing |
+| LinkedIn | Social | OAuth 2.0 token | B2B posting |
+| FireCrawl | Research | API key | scrape/crawl the web |
+| Perplexity | Research | API key | cited web research |
+| Apify | Research | API token | ready-made scrapers |
+| Resend | Email | API key | send campaigns |
+| Brevo | Email | API key (header) | email + SMS |
+| Google PageSpeed | SEO | API key (query) | Core Web Vitals |
 | Make | Automation | webhook URL | trigger scenarios |
 | Custom REST / Webhook / MCP | Custom | your choice | anything else |
+
+### Privacy & usage metering
+Keys are visible only to the account that owns the machine: HELIX has no vendor
+server, stores keys solely in local `data/db.json`, never returns them to any
+client (masked hint only), and sends them nowhere except the connected service.
+Every real call is metered — calls, success rate, latency, last-used — as
+metadata only (never keys, never request/response content), shown per
+connection and in the Recent Activity feed on the Integrations page.
 
 ### How to connect one
 1. `npm start`, open HELIX, go to **Integrations**.

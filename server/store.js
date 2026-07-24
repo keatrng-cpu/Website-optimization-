@@ -30,6 +30,7 @@ const DEFAULTS = () => ({
   integrations: [],// { id, name, preset, type, category, icon, baseUrl, testPath, auth, extraHeaders, authValue, enabled, lastTest, createdAt }
   memories: [],    // { id, text, kind: fact|preference|goal, source, learnedAt, pinned }
   feedback: {},    // per-helper { up, down } reply-rating counters
+  usageLog: [],    // bounded recent API-call metadata (never keys or bodies)
   settings: {
     provider: 'offline', // offline | anthropic | openai | ollama
     apiKey: '',
