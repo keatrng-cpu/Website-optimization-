@@ -2,9 +2,10 @@
 // structured output. Used when no LLM provider is configured, and as the
 // fallback when a provider call fails — so every feature works with zero
 // network access and zero API keys.
+import { extractMemories } from './memory.js';
 
 function biz(brain) {
-  return brain.businessName || 'your business';
+  return brain.businessName || 'your brand';
 }
 function aud(brain) {
   return brain.audience || 'your target customers';
@@ -108,7 +109,7 @@ Reply to this email with any question — a human reads every reply.
 ## LinkedIn
 Most ${aud(brain)} don't have a strategy problem. They have an execution problem.
 
-Here's how we approach it at ${biz(brain)}:
+Here's how we approach it${brain.businessName ? ` at ${brain.businessName}` : ''}:
 1. Pick ONE outcome that matters this month
 2. Cut everything that doesn't feed it
 3. Ship something small every single day
@@ -122,7 +123,7 @@ What's the one outcome you're committing to this month? 👇
 
 Progress > perfection. Every time.
 
-At ${biz(brain)} we've seen it over and over — the ones who win are the ones who ship.
+${brain.businessName ? `At ${brain.businessName} we've` : `We've`} seen it over and over — the ones who win are the ones who ship.
 
 Save this as your sign to start today. 🚀
 
@@ -508,10 +509,40 @@ ${offers}
 Just tell me in plain words — or ask “what should I focus on?” for a read across the whole workspace.`;
 }
 
+// "My tiktok is @x", "our budget is $500/mo" — the user is TELLING us
+// something, not asking for a deliverable. Answer like a person: acknowledge,
+// confirm what the Brain saved, offer the natural next move.
+const ASK_VERBS = /\b(write|create|make|draft|plan|generate|give|need|want|help|build|audit|fix|review|script|schedule|analyz|suggest|come up|show|list|explain|how|what|why|when|should|can you|could you)\b/i;
+function isFactShare(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 220 || t.includes('?')) return false;
+  if (!/^(my|our|we|i)\b/i.test(t)) return false;
+  if (ASK_VERBS.test(t)) return false;
+  return /\b(is|are|was|were|'s|'re)\b/i.test(t);
+}
+
+function factShareReply(message, brain, helper, ws) {
+  const h = helper || { name: 'Vizzy', emoji: '🗂️', role: 'Virtual assistant', skills: [] };
+  const learned = extractMemories(message);
+  const saved = learned.length
+    ? `🧬 Saved to your Brain:\n${learned.map((m) => `- “${m.text}”`).join('\n')}\n\nEvery teammate uses this from now on — see it under Brain → Memories (pin it to keep it forever).`
+    : `I've noted it for this conversation. Tip: phrases with concrete details (“our price is…”, “my handle is…”) get saved to the Brain automatically so the whole team remembers.`;
+  const t = message.toLowerCase();
+  const follow = /tiktok|instagram|twitter|facebook|linkedin|youtube|handle|social/.test(t)
+    ? `Since we're on socials — want me to draft a week of posts shaped for those accounts? Just say “plan a week of content”.`
+    : /price|pricing|budget|margin|discount/.test(t)
+    ? `Want me to sanity-check how that plays into your offer or a campaign? Ask away.`
+    : /based in|located|address/.test(t)
+    ? `I'll use that for local flavor in copy and SEO. Want a quick local-audience post to try it?`
+    : `Anything you want me to do with that right now — or shall I just keep it in mind?`;
+  return `Got it! ${h.emoji}\n\n${saved}\n\n${follow}`;
+}
+
 export function offlineGenerate({ helper, brain, message, workspace }) {
   let intent = detectIntent(message || '');
   const small = intent === 'general' ? isSmallTalk(message) : null;
   if (small) return chatTurn(small, message, brain, helper, workspace);
+  if (isFactShare(message)) return factShareReply(message, brain, helper, workspace);
   const gen = GENERATORS[intent] || GENERATORS.general;
   let out = gen(message, brain, helper, workspace);
   // Surface a genuinely relevant learned memory on every intent (relevance is

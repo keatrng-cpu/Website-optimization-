@@ -9,7 +9,7 @@ const MAX_MEMORIES = 100;
 
 const PREFERENCE = /\b(prefer|always|never|avoid|don'?t like|hate|tone|style|keep it|no emojis?|emojis?)\b/i;
 const GOAL = /\b(goal|launch(?:ing)?|plan(?:ning)?|aim(?:ing)?|deadline|by (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|q[1-4]|\d{4}))\b/i;
-const SIGNAL = /\b(prefer|always|never|avoid|don'?t|hate|tone|launch|deadline|budget|price|pricing|best[ -]?sell\w*|customers?|clients?|goal|plan|ship|discount|margin|suppliers?|open(?:ing)? hours)\b/i;
+const SIGNAL = /\b(prefer|always|never|avoid|don'?t|hate|tone|launch|deadline|budget|price|pricing|best[ -]?sell\w*|customers?|clients?|goal|plan|ship|discount|margin|suppliers?|open(?:ing)? hours|tiktok|instagram|twitter|facebook|linkedin|youtube|handle|username|website|domain|url|email|based in|located)\b/i;
 
 function normalize(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();

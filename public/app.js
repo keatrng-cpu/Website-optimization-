@@ -227,7 +227,12 @@ function renderSidebar(active) {
              <span>${n.icon}</span><span>${n.name}</span>
              ${n.badge && counts[n.badge] ? `<span class="badge acc">${counts[n.badge]}</span>` : ''}
            </a>`).join('')}
-    </nav>`;
+    </nav>
+    <a class="user-chip" href="#/account" title="Account">
+      <span class="avatar sm" style="background:#6c8cff22;font-weight:800">${state.boot?.account?.name ? esc(state.boot.account.name.slice(0, 1).toUpperCase()) : '👤'}</span>
+      <span style="min-width:0"><b>${state.boot?.account?.name ? esc(state.boot.account.name) : 'Sign in'}</b>
+      <small>${state.boot?.account?.role === 'owner' ? '👑 Founder' : state.boot?.account?.name ? `${esc(ws?.tier || 'free')} plan` : 'Create your HELIX ID'}</small></span>
+    </a>`;
 
   const pill = $('#wsPill');
   if (pill) {
@@ -1118,6 +1123,17 @@ routes.settings = async (main) => {
           ${[['offline', '⬢ Built-in offline engine (no key needed)'], ['anthropic', 'Anthropic (Claude)'], ['openai', 'OpenAI / compatible'], ['ollama', 'Ollama (local models)']]
             .map(([v, l]) => `<option value="${v}" ${s.provider === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select>
+        <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap" id="provPresets">
+          ${[
+            ['OpenRouter', 'https://openrouter.ai/api/v1', 'openrouter/auto'],
+            ['Groq', 'https://api.groq.com/openai/v1', 'llama-3.3-70b-versatile'],
+            ['Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', 'gemini-2.0-flash'],
+            ['Mistral', 'https://api.mistral.ai/v1', 'mistral-small-latest'],
+            ['DeepSeek', 'https://api.deepseek.com/v1', 'deepseek-chat'],
+            ['Ollama (local)', 'http://localhost:11434', ''],
+          ].map(([n, u, m]) => `<button type="button" class="chip" data-purl="${u}" data-pmodel="${m}" data-pname="${n}">${n}</button>`).join('')}
+        </div>
+        <p class="dim" style="margin-top:4px">One click fills the endpoint — you bring your own key from that provider. Any OpenAI-compatible service works.</p>
         <label>API key ${s.hasKey ? '<span class="badge on">saved</span>' : ''}</label>
         <input name="apiKey" type="password" placeholder="${s.hasKey ? '•••••••• (leave blank to keep)' : 'Not needed for offline or Ollama'}">
         <label>Model (optional)</label>
@@ -1155,6 +1171,15 @@ routes.settings = async (main) => {
     await api('PUT', '/api/settings', body);
     toast('Settings saved');
     navigate();
+  };
+  $('#provPresets', main).onclick = (e) => {
+    const b = e.target.closest('[data-purl]');
+    if (!b) return;
+    const form = $('#settingsForm', main);
+    form.provider.value = b.dataset.pname.startsWith('Ollama') ? 'ollama' : 'openai';
+    form.baseUrl.value = b.dataset.purl;
+    if (b.dataset.pmodel) form.model.value = b.dataset.pmodel;
+    toast(`${b.dataset.pname} endpoint filled — paste your ${b.dataset.pname} key and save`);
   };
   $('#importBtn').onclick = () => $('#importFile').click();
   $('#importFile').onchange = async (e) => {
@@ -1979,7 +2004,47 @@ async function mountTicker() {
 
 document.addEventListener('click', () => { const m = $('#wsMenu'); if (m) m.classList.remove('open'); });
 
+// First-run welcome: a real front door for the hosted/local app. Shown once,
+// only over http(s) (never in the file:// demo), skippable — local-first
+// means an account is an identity, not a gate.
+function maybeWelcome() {
+  if (!location.protocol.startsWith('http')) return;
+  if (state.boot?.account?.name) return;
+  if (localStorage.getItem('hx-welcomed')) return;
+  const el = document.createElement('div');
+  el.className = 'welcome';
+  el.innerHTML = `<div class="panel">
+    <div class="mark">⬢</div>
+    <h2>Welcome to HELIX</h2>
+    <p>Your AI business team — private by architecture. Create your HELIX ID to personalize your workspace. It lives on this device, not on a server.</p>
+    <input id="wName" placeholder="Your name">
+    <input id="wEmail" type="email" placeholder="Email (use your checkout email if you bought Pro)">
+    <label class="row" style="margin-top:12px;gap:8px;font-size:12px;color:var(--muted);text-align:left;align-items:flex-start;display:flex">
+      <input type="checkbox" id="wBeacon" checked style="width:auto;margin-top:2px">
+      <span>Let HELIX HQ know I joined (sends only name &amp; email, once)</span></label>
+    <button class="btn" id="wGo" style="width:100%;margin-top:14px">⬢ Create my HELIX ID</button>
+    <button class="skip" id="wSkip">Explore first — no account →</button>
+  </div>`;
+  document.body.appendChild(el);
+  $('#wGo', el).onclick = async () => {
+    const name = $('#wName', el).value.trim();
+    const email = $('#wEmail', el).value.trim();
+    if (!name && !email) { toast('Add a name or email — or explore first', true); return; }
+    const saved = await api('PUT', '/api/account', { name, email });
+    if ($('#wBeacon', el).checked && saved.role !== 'owner') {
+      fetch('/', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'form-name': 'helix-signups', name, email, plan: 'free' }).toString() }).catch(() => {});
+    }
+    localStorage.setItem('hx-welcomed', '1');
+    el.remove();
+    toast(saved.role === 'owner' ? '👑 Welcome back, founder' : `Welcome to HELIX${name ? ', ' + name : ''} ⬢`);
+    await loadBoot();
+    navigate();
+  };
+  $('#wSkip', el).onclick = () => { localStorage.setItem('hx-welcomed', '1'); el.remove(); };
+}
+
 // ---------- boot ----------
-loadBoot().then(() => { navigate(); mountTicker(); }).catch((e) => {
+loadBoot().then(() => { navigate(); mountTicker(); maybeWelcome(); }).catch((e) => {
   $('#main').innerHTML = `<div class="page"><div class="empty">Could not reach the HELIX server: ${esc(e.message)}</div></div>`;
 });

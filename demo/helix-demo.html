@@ -80,6 +80,23 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
 .ws-item:hover { background: var(--bg2); }
 .ws-item.on { color: var(--accent); font-weight: 700; }
 .ws-item.add { color: var(--muted); border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; margin-top: 4px; padding-top: 10px; }
+/* signed-in user chip pinned to the sidebar foot */
+.user-chip { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border-top: 1px solid var(--border); color: var(--text); position: sticky; bottom: 0; background: var(--bg2); }
+.user-chip:hover { background: var(--surface); }
+.user-chip b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-chip small { color: var(--muted); font-size: 11px; text-transform: capitalize; }
+/* first-run welcome */
+.welcome { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 8, 14, .78); backdrop-filter: blur(6px); padding: 20px; }
+.welcome .panel { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.welcome .mark { font-size: 40px; background: linear-gradient(135deg, #5a7bff, #8a5cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.welcome h2 { margin: 8px 0 4px; font-size: 22px; }
+.welcome p { color: var(--muted); font-size: 13.5px; }
+.welcome input { text-align: left; margin-top: 8px; }
+.welcome .skip { display: inline-block; margin-top: 14px; color: var(--muted); font-size: 13px; cursor: pointer; background: none; border: none; }
+.welcome .skip:hover { color: var(--text); }
 .nav a {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px; border-radius: 9px; color: var(--muted);
@@ -644,7 +661,7 @@ function systemPrompt(helper, brain, knowledge, state) {
 // network access and zero API keys.
 
 function biz(brain) {
-  return brain.businessName || 'your business';
+  return brain.businessName || 'your brand';
 }
 function aud(brain) {
   return brain.audience || 'your target customers';
@@ -748,7 +765,7 @@ Reply to this email with any question — a human reads every reply.
 ## LinkedIn
 Most ${aud(brain)} don't have a strategy problem. They have an execution problem.
 
-Here's how we approach it at ${biz(brain)}:
+Here's how we approach it${brain.businessName ? ` at ${brain.businessName}` : ''}:
 1. Pick ONE outcome that matters this month
 2. Cut everything that doesn't feed it
 3. Ship something small every single day
@@ -762,7 +779,7 @@ What's the one outcome you're committing to this month? 👇
 
 Progress > perfection. Every time.
 
-At ${biz(brain)} we've seen it over and over — the ones who win are the ones who ship.
+${brain.businessName ? `At ${brain.businessName} we've` : `We've`} seen it over and over — the ones who win are the ones who ship.
 
 Save this as your sign to start today. 🚀
 
@@ -1148,10 +1165,40 @@ ${offers}
 Just tell me in plain words — or ask “what should I focus on?” for a read across the whole workspace.`;
 }
 
+// "My tiktok is @x", "our budget is $500/mo" — the user is TELLING us
+// something, not asking for a deliverable. Answer like a person: acknowledge,
+// confirm what the Brain saved, offer the natural next move.
+const ASK_VERBS = /\b(write|create|make|draft|plan|generate|give|need|want|help|build|audit|fix|review|script|schedule|analyz|suggest|come up|show|list|explain|how|what|why|when|should|can you|could you)\b/i;
+function isFactShare(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 220 || t.includes('?')) return false;
+  if (!/^(my|our|we|i)\b/i.test(t)) return false;
+  if (ASK_VERBS.test(t)) return false;
+  return /\b(is|are|was|were|'s|'re)\b/i.test(t);
+}
+
+function factShareReply(message, brain, helper, ws) {
+  const h = helper || { name: 'Vizzy', emoji: '🗂️', role: 'Virtual assistant', skills: [] };
+  const learned = extractMemories(message);
+  const saved = learned.length
+    ? `🧬 Saved to your Brain:\n${learned.map((m) => `- “${m.text}”`).join('\n')}\n\nEvery teammate uses this from now on — see it under Brain → Memories (pin it to keep it forever).`
+    : `I've noted it for this conversation. Tip: phrases with concrete details (“our price is…”, “my handle is…”) get saved to the Brain automatically so the whole team remembers.`;
+  const t = message.toLowerCase();
+  const follow = /tiktok|instagram|twitter|facebook|linkedin|youtube|handle|social/.test(t)
+    ? `Since we're on socials — want me to draft a week of posts shaped for those accounts? Just say “plan a week of content”.`
+    : /price|pricing|budget|margin|discount/.test(t)
+    ? `Want me to sanity-check how that plays into your offer or a campaign? Ask away.`
+    : /based in|located|address/.test(t)
+    ? `I'll use that for local flavor in copy and SEO. Want a quick local-audience post to try it?`
+    : `Anything you want me to do with that right now — or shall I just keep it in mind?`;
+  return `Got it! ${h.emoji}\n\n${saved}\n\n${follow}`;
+}
+
 function offlineGenerate({ helper, brain, message, workspace }) {
   let intent = detectIntent(message || '');
   const small = intent === 'general' ? isSmallTalk(message) : null;
   if (small) return chatTurn(small, message, brain, helper, workspace);
+  if (isFactShare(message)) return factShareReply(message, brain, helper, workspace);
   const gen = GENERATORS[intent] || GENERATORS.general;
   let out = gen(message, brain, helper, workspace);
   // Surface a genuinely relevant learned memory on every intent (relevance is
@@ -2258,7 +2305,7 @@ const MAX_MEMORIES = 100;
 
 const PREFERENCE = /\b(prefer|always|never|avoid|don'?t like|hate|tone|style|keep it|no emojis?|emojis?)\b/i;
 const GOAL = /\b(goal|launch(?:ing)?|plan(?:ning)?|aim(?:ing)?|deadline|by (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|q[1-4]|\d{4}))\b/i;
-const SIGNAL = /\b(prefer|always|never|avoid|don'?t|hate|tone|launch|deadline|budget|price|pricing|best[ -]?sell\w*|customers?|clients?|goal|plan|ship|discount|margin|suppliers?|open(?:ing)? hours)\b/i;
+const SIGNAL = /\b(prefer|always|never|avoid|don'?t|hate|tone|launch|deadline|budget|price|pricing|best[ -]?sell\w*|customers?|clients?|goal|plan|ship|discount|margin|suppliers?|open(?:ing)? hours|tiktok|instagram|twitter|facebook|linkedin|youtube|handle|username|website|domain|url|email|based in|located)\b/i;
 
 function normalize(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -4416,7 +4463,12 @@ function renderSidebar(active) {
              <span>${n.icon}</span><span>${n.name}</span>
              ${n.badge && counts[n.badge] ? `<span class="badge acc">${counts[n.badge]}</span>` : ''}
            </a>`).join('')}
-    </nav>`;
+    </nav>
+    <a class="user-chip" href="#/account" title="Account">
+      <span class="avatar sm" style="background:#6c8cff22;font-weight:800">${state.boot?.account?.name ? esc(state.boot.account.name.slice(0, 1).toUpperCase()) : '👤'}</span>
+      <span style="min-width:0"><b>${state.boot?.account?.name ? esc(state.boot.account.name) : 'Sign in'}</b>
+      <small>${state.boot?.account?.role === 'owner' ? '👑 Founder' : state.boot?.account?.name ? `${esc(ws?.tier || 'free')} plan` : 'Create your HELIX ID'}</small></span>
+    </a>`;
 
   const pill = $('#wsPill');
   if (pill) {
@@ -5308,6 +5360,17 @@ routes.settings = async (main) => {
           ${[['offline', '⬢ Built-in offline engine (no key needed)'], ['anthropic', 'Anthropic (Claude)'], ['openai', 'OpenAI / compatible'], ['ollama', 'Ollama (local models)']]
             .map(([v, l]) => `<option value="${v}" ${s.provider === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select>
+        <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap" id="provPresets">
+          ${[
+            ['OpenRouter', 'https://openrouter.ai/api/v1', 'openrouter/auto'],
+            ['Groq', 'https://api.groq.com/openai/v1', 'llama-3.3-70b-versatile'],
+            ['Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai', 'gemini-2.0-flash'],
+            ['Mistral', 'https://api.mistral.ai/v1', 'mistral-small-latest'],
+            ['DeepSeek', 'https://api.deepseek.com/v1', 'deepseek-chat'],
+            ['Ollama (local)', 'http://localhost:11434', ''],
+          ].map(([n, u, m]) => `<button type="button" class="chip" data-purl="${u}" data-pmodel="${m}" data-pname="${n}">${n}</button>`).join('')}
+        </div>
+        <p class="dim" style="margin-top:4px">One click fills the endpoint — you bring your own key from that provider. Any OpenAI-compatible service works.</p>
         <label>API key ${s.hasKey ? '<span class="badge on">saved</span>' : ''}</label>
         <input name="apiKey" type="password" placeholder="${s.hasKey ? '•••••••• (leave blank to keep)' : 'Not needed for offline or Ollama'}">
         <label>Model (optional)</label>
@@ -5345,6 +5408,15 @@ routes.settings = async (main) => {
     await api('PUT', '/api/settings', body);
     toast('Settings saved');
     navigate();
+  };
+  $('#provPresets', main).onclick = (e) => {
+    const b = e.target.closest('[data-purl]');
+    if (!b) return;
+    const form = $('#settingsForm', main);
+    form.provider.value = b.dataset.pname.startsWith('Ollama') ? 'ollama' : 'openai';
+    form.baseUrl.value = b.dataset.purl;
+    if (b.dataset.pmodel) form.model.value = b.dataset.pmodel;
+    toast(`${b.dataset.pname} endpoint filled — paste your ${b.dataset.pname} key and save`);
   };
   $('#importBtn').onclick = () => $('#importFile').click();
   $('#importFile').onchange = async (e) => {
@@ -6169,8 +6241,48 @@ async function mountTicker() {
 
 document.addEventListener('click', () => { const m = $('#wsMenu'); if (m) m.classList.remove('open'); });
 
+// First-run welcome: a real front door for the hosted/local app. Shown once,
+// only over http(s) (never in the file:// demo), skippable — local-first
+// means an account is an identity, not a gate.
+function maybeWelcome() {
+  if (!location.protocol.startsWith('http')) return;
+  if (state.boot?.account?.name) return;
+  if (localStorage.getItem('hx-welcomed')) return;
+  const el = document.createElement('div');
+  el.className = 'welcome';
+  el.innerHTML = `<div class="panel">
+    <div class="mark">⬢</div>
+    <h2>Welcome to HELIX</h2>
+    <p>Your AI business team — private by architecture. Create your HELIX ID to personalize your workspace. It lives on this device, not on a server.</p>
+    <input id="wName" placeholder="Your name">
+    <input id="wEmail" type="email" placeholder="Email (use your checkout email if you bought Pro)">
+    <label class="row" style="margin-top:12px;gap:8px;font-size:12px;color:var(--muted);text-align:left;align-items:flex-start;display:flex">
+      <input type="checkbox" id="wBeacon" checked style="width:auto;margin-top:2px">
+      <span>Let HELIX HQ know I joined (sends only name &amp; email, once)</span></label>
+    <button class="btn" id="wGo" style="width:100%;margin-top:14px">⬢ Create my HELIX ID</button>
+    <button class="skip" id="wSkip">Explore first — no account →</button>
+  </div>`;
+  document.body.appendChild(el);
+  $('#wGo', el).onclick = async () => {
+    const name = $('#wName', el).value.trim();
+    const email = $('#wEmail', el).value.trim();
+    if (!name && !email) { toast('Add a name or email — or explore first', true); return; }
+    const saved = await api('PUT', '/api/account', { name, email });
+    if ($('#wBeacon', el).checked && saved.role !== 'owner') {
+      fetch('/', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'form-name': 'helix-signups', name, email, plan: 'free' }).toString() }).catch(() => {});
+    }
+    localStorage.setItem('hx-welcomed', '1');
+    el.remove();
+    toast(saved.role === 'owner' ? '👑 Welcome back, founder' : `Welcome to HELIX${name ? ', ' + name : ''} ⬢`);
+    await loadBoot();
+    navigate();
+  };
+  $('#wSkip', el).onclick = () => { localStorage.setItem('hx-welcomed', '1'); el.remove(); };
+}
+
 // ---------- boot ----------
-loadBoot().then(() => { navigate(); mountTicker(); }).catch((e) => {
+loadBoot().then(() => { navigate(); mountTicker(); maybeWelcome(); }).catch((e) => {
   $('#main').innerHTML = `<div class="page"><div class="empty">Could not reach the HELIX server: ${esc(e.message)}</div></div>`;
 });
 

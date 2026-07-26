@@ -507,6 +507,26 @@ test('agent: plan preview executes nothing', async () => {
   assert.equal((await api('GET', '/api/sites')).data.length, sitesBefore, 'preview created no sites');
 });
 
+test('offline: telling a teammate a fact gets remembered, not a template dump', async () => {
+  const { offlineGenerate } = await import('../server/offline.js');
+  const { extractMemories } = await import('../server/memory.js');
+  const msg = 'My tiktok and instagram accounts are Luexeforgeio';
+  const out = offlineGenerate({ helper: { id: 'soshie', name: 'Soshie', role: 'Social Media Manager', emoji: '📱', skills: [] }, brain: {}, message: msg, workspace: {} });
+  assert.ok(!/Social content pack/i.test(out), 'fact share must not trigger the content-pack template');
+  assert.ok(/Saved to your Brain/i.test(out), 'reply confirms what was learned');
+  assert.ok(/Luexeforgeio/.test(out), 'reply echoes the actual fact');
+  assert.ok(/week of content|posts/i.test(out), 'reply offers the natural next step');
+  const mems = extractMemories(msg);
+  assert.ok(mems.length === 1 && mems[0].kind === 'fact', 'handles are extracted as a fact memory');
+
+  // an actual request still generates a deliverable
+  const ask = offlineGenerate({ helper: { id: 'soshie', name: 'Soshie', role: 'Social Media Manager', emoji: '📱', skills: [] }, brain: {}, message: 'Write a week of instagram posts about our candles', workspace: {} });
+  assert.ok(!/Saved to your Brain/i.test(ask), 'requests are not misread as fact shares');
+
+  // empty-brain templates must not leak "at your business" placeholders
+  assert.ok(!/at your business/i.test(ask), 'no placeholder phrasing with an empty brain');
+});
+
 test('offline: a sales call script request routes to the sales generator', async () => {
   const { offlineGenerate } = await import('../server/offline.js');
   const outText = offlineGenerate({

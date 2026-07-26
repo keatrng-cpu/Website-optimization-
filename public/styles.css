@@ -73,6 +73,23 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px
 .ws-item:hover { background: var(--bg2); }
 .ws-item.on { color: var(--accent); font-weight: 700; }
 .ws-item.add { color: var(--muted); border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; margin-top: 4px; padding-top: 10px; }
+/* signed-in user chip pinned to the sidebar foot */
+.user-chip { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border-top: 1px solid var(--border); color: var(--text); position: sticky; bottom: 0; background: var(--bg2); }
+.user-chip:hover { background: var(--surface); }
+.user-chip b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-chip small { color: var(--muted); font-size: 11px; text-transform: capitalize; }
+/* first-run welcome */
+.welcome { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 8, 14, .78); backdrop-filter: blur(6px); padding: 20px; }
+.welcome .panel { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.welcome .mark { font-size: 40px; background: linear-gradient(135deg, #5a7bff, #8a5cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.welcome h2 { margin: 8px 0 4px; font-size: 22px; }
+.welcome p { color: var(--muted); font-size: 13.5px; }
+.welcome input { text-align: left; margin-top: 8px; }
+.welcome .skip { display: inline-block; margin-top: 14px; color: var(--muted); font-size: 13px; cursor: pointer; background: none; border: none; }
+.welcome .skip:hover { color: var(--text); }
 .nav a {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px; border-radius: 9px; color: var(--muted);
