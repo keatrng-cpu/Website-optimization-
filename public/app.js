@@ -1659,6 +1659,8 @@ routes.account = async (main) => {
   await loadBoot();
   const acct = await api('GET', '/api/account').catch(() => ({}));
   const signedIn = !!(acct.name || acct.email);
+  const ent = acct.entitlement || {};
+  const entActive = !!(ent.tier && (!ent.exp || ent.exp * 1000 > Date.now()));
   main.innerHTML = `<div class="page">
     <div class="page-head"><div><h1>👤 Account</h1>
       <p>${signedIn ? 'Your HELIX identity on this device.' : 'Create your HELIX ID — it lives on this device only, like everything else here.'}</p></div></div>
@@ -1684,11 +1686,15 @@ routes.account = async (main) => {
         <p class="dim" style="margin-top:12px">🔒 Stored only in your workspace on this device — never sent to us or anyone else (unless you tick the signup beacon above, which sends name &amp; email once).</p>
       </div>
       <div class="card">
-        <b>Pro license</b>
-        <p class="muted" style="margin:8px 0;font-size:13px">Bought Pro? Your Stripe receipt email is your order confirmation. Paste the license key from it here when it arrives — founding members are activated first as managed-Pro rolls out.</p>
-        <label>License key</label><input id="acKey" value="${esc(acct.licenseKey || '')}" placeholder="HELIX-XXXX-XXXX">
-        <div style="margin-top:12px"><button class="btn ghost" id="acKeySave">Save key</button></div>
-        <p class="dim" style="margin-top:10px">No key yet? <a href="/#pricing" target="_blank">See plans</a> — the free tier stays fully yours either way.</p>
+        <b>${entActive ? `✅ ${esc(ent.tier)} active` : 'Activate Pro'}</b>
+        ${entActive
+          ? `<p class="muted" style="margin:8px 0;font-size:13px">Your <b>${esc(ent.tier)}</b> plan is verified${ent.exp ? ` (renews around ${new Date(ent.exp * 1000).toLocaleDateString()})` : ''}. Managed AI, ${ent.tier === 'agency' ? 'unlimited' : '5'} business workspaces, and hosted features are unlocked.</p>
+             <div style="margin-top:10px"><button class="btn ghost" id="acDeactivate">Deactivate on this device</button></div>`
+          : `<p class="muted" style="margin:8px 0;font-size:13px">Bought Pro or Agency? Activate it here — no key to copy. Use the email you paid with, or paste your checkout confirmation link.</p>
+             <label>Checkout email</label><input id="acEmail2" type="email" placeholder="the email you paid with" value="${esc(acct.email || '')}">
+             <label>…or checkout link <span class="dim">(more secure — from your confirmation)</span></label><input id="acSession" placeholder="https://…checkout…?session_id=cs_…">
+             <div class="row" style="margin-top:12px;gap:8px"><button class="btn" id="acActivate">⬢ Activate my plan</button></div>
+             <p class="dim" style="margin-top:10px" id="acActMsg">No plan yet? <a href="/#pricing" target="_blank">See plans</a> — the free tier stays fully yours either way.</p>`}
       </div>
       <div class="card">
         <b>🔐 Your data, on any device</b>
@@ -1771,9 +1777,43 @@ routes.account = async (main) => {
     await loadBoot();
     navigate();
   };
-  $('#acKeySave', main).onclick = async () => {
-    await api('PUT', '/api/account', { licenseKey: $('#acKey', main).value.trim() });
-    toast('License key saved');
+  // ----- Activate Pro: Stripe-gated redeem via the deployed gateway function -----
+  const GW = (location.protocol.startsWith('http') && !/^(localhost|127|0\.0\.0\.0)/.test(location.hostname))
+    ? '' : null; // '' = same-origin functions (hosted). null = no gateway here.
+  function decodeExp(token) {
+    try { const p = JSON.parse(atob(String(token).split('.')[0].replace(/-/g, '+').replace(/_/g, '/'))); return p.exp || null; }
+    catch { return null; }
+  }
+  const act = $('#acActivate', main);
+  if (act) act.onclick = async () => {
+    const email = $('#acEmail2', main).value.trim();
+    const sessLink = $('#acSession', main).value.trim();
+    const msg = $('#acActMsg', main);
+    const session_id = (sessLink.match(/session_id=([^&\s]+)/) || [])[1] || (sessLink.startsWith('cs_') ? sessLink : '');
+    if (!email && !session_id) { toast('Enter your checkout email or link', true); return; }
+    if (GW === null) { msg.innerHTML = '⚠️ Activation runs on the hosted app — open <a href="https://helixscales.netlify.app/app#/account" target="_blank">helixscales.netlify.app</a> and activate there.'; return; }
+    act.disabled = true; act.textContent = '⏳ Verifying with Stripe…';
+    try {
+      const r = await fetch(GW + '/.netlify/functions/redeem-license', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(session_id ? { session_id } : { email }),
+      });
+      const d = await r.json();
+      if (!d.ok) { msg.textContent = d.reason || 'Could not verify — please retry.'; act.disabled = false; act.textContent = '⬢ Activate my plan'; return; }
+      await api('PUT', '/api/account', { licenseKey: d.license, entitlement: { tier: d.tier, exp: decodeExp(d.license) } });
+      toast(`✅ ${d.tier} activated — welcome to managed HELIX`);
+      await loadBoot();
+      navigate();
+    } catch {
+      msg.textContent = 'Activation needs the hosted app (the gateway lives there). Try helixscales.netlify.app.';
+      act.disabled = false; act.textContent = '⬢ Activate my plan';
+    }
+  };
+  const deact = $('#acDeactivate', main);
+  if (deact) deact.onclick = async () => {
+    await api('PUT', '/api/account', { licenseKey: '', entitlement: null });
+    toast('Deactivated on this device');
+    await loadBoot(); navigate();
   };
 };
 

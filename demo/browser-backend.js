@@ -15,7 +15,7 @@ const DEFAULTS = () => ({
   knowledge: [], chats: [], tasks: [], documents: [], automations: [],
   sites: [], calendar: [], emails: [], seoAudits: [], analytics: [], inbox: [], integrations: [], memories: [],
   feedback: {}, usageLog: [], agentRuns: [],
-  account: { name: '', email: '', company: '', licenseKey: '', role: 'member', createdAt: null },
+  account: { name: '', email: '', company: '', licenseKey: '', role: 'member', createdAt: null, entitlement: null },
   telemetry: { keys: {}, days: {} },
   workspaces: [], activeWorkspace: '',
   settings: { provider: 'offline', apiKey: '', model: '', baseUrl: '' },
@@ -103,8 +103,32 @@ async function gatewayProposeMemories(message) {
   finally { clearTimeout(timer); }
 }
 
+// Managed AI: verified Pro/Agency route through HELIX's own gateway function.
+// The server re-verifies the signed license before spending any budget, so this
+// is the un-forgeable value. Any failure falls back silently to the next path.
+async function askManaged(helper, message) {
+  const a = db.account || {};
+  const ent = a.entitlement || {};
+  const active = ent.tier && (!ent.exp || ent.exp * 1000 > Date.now());
+  if (!active || !a.licenseKey) return null;
+  if (typeof location === 'undefined' || !location.protocol.startsWith('http')) return null;
+  const system = systemPrompt(helper, db.brain, db.knowledge, db);
+  try {
+    const r = await fetch('/.netlify/functions/ai', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ license: a.licenseKey, system, messages: [{ role: 'user', content: message }] }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d.ok && d.text ? { text: d.text, engine: 'managed' } : null;
+  } catch { return null; }
+}
+
 async function ask(helperId, message) {
   const helper = HELPER_MAP[helperId] || HELPER_MAP.vizzy;
+  const managed = await askManaged(helper, message);
+  if (managed) return managed;
   const live = await askGateway(helper, message);
   if (live) return live;
   return { text: offlineGenerate({ helper, brain: db.brain, message, workspace: db }), engine: 'offline' };
@@ -722,15 +746,20 @@ async function handle(method, pathname, query, body) {
     }
 
     case 'account': {
-      const a = db.account || (db.account = { name: '', email: '', company: '', licenseKey: '', createdAt: null });
+      const a = db.account || (db.account = { name: '', email: '', company: '', licenseKey: '', createdAt: null, entitlement: null });
       if (method === 'GET') return ok(a);
       if (method === 'PUT') {
         if (body.name !== undefined) a.name = clean(String(body.name), 80);
         if (body.email !== undefined) a.email = clean(String(body.email), 120);
         if (body.company !== undefined) a.company = clean(String(body.company), 120);
-        if (body.licenseKey !== undefined) a.licenseKey = clean(String(body.licenseKey), 80);
+        if (body.licenseKey !== undefined) a.licenseKey = clean(String(body.licenseKey), 1200);
+        if (body.entitlement !== undefined) {
+          a.entitlement = (body.entitlement && ['pro', 'agency'].includes(body.entitlement.tier))
+            ? { tier: body.entitlement.tier, exp: Number(body.entitlement.exp) || null, verifiedAt: Date.now() }
+            : null;
+        }
         if (a.name && !a.createdAt) a.createdAt = Date.now();
-        if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; }
+        if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; a.entitlement = null; }
         a.role = (FOUNDER_EMAILS.includes(a.email.toLowerCase()) || a.licenseKey.startsWith(FOUNDER_KEY_PREFIX)) ? 'owner' : 'member';
         save();
         return ok(a);

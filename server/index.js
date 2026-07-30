@@ -715,13 +715,19 @@ export function createApp({ dataDir } = {}) {
   router.get('/api/account', (req, res) => sendJSON(res, 200, S().account || {}));
   router.put('/api/account', async (req, res) => {
     const b = await readBody(req);
-    const a = S().account || (S().account = { name: '', email: '', company: '', licenseKey: '', createdAt: null });
+    const a = S().account || (S().account = { name: '', email: '', company: '', licenseKey: '', createdAt: null, entitlement: null });
     if (b.name !== undefined) a.name = clean(String(b.name), 80);
     if (b.email !== undefined) a.email = clean(String(b.email), 120);
     if (b.company !== undefined) a.company = clean(String(b.company), 120);
-    if (b.licenseKey !== undefined) a.licenseKey = clean(String(b.licenseKey), 80);
+    if (b.licenseKey !== undefined) a.licenseKey = clean(String(b.licenseKey), 1200); // holds a signed license token
+    // Entitlement is set only from a successful gateway redeem (tier/exp).
+    if (b.entitlement !== undefined) {
+      a.entitlement = (b.entitlement && ['pro', 'agency'].includes(b.entitlement.tier))
+        ? { tier: b.entitlement.tier, exp: Number(b.entitlement.exp) || null, verifiedAt: Date.now() }
+        : null;
+    }
     if (a.name && !a.createdAt) a.createdAt = Date.now();
-    if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; } // sign-out clears
+    if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; a.entitlement = null; } // sign-out clears
     // Role is derived, never client-set: founder email or founder key unlocks owner.
     a.role = (FOUNDER_EMAILS.includes(a.email.toLowerCase()) || a.licenseKey.startsWith(FOUNDER_KEY_PREFIX)) ? 'owner' : 'member';
     store.save();

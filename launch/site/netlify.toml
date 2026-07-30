@@ -1,4 +1,8 @@
-# HELIX launch site — static deploy, no build step.
+# HELIX launch site — static deploy + serverless revenue engine.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 [[headers]]
   for = "/*"
   [headers.values]

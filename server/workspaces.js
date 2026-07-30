@@ -10,10 +10,14 @@ export const WORKSPACE_FIELDS = [
 ];
 
 // Plan ladder: free = 1 business, Pro = 5, Agency & founder = unlimited.
+// Entitlement comes from a server-verified license (account.entitlement),
+// not a client-typed string — the founder email is the only local override.
 export function planFor(account = {}) {
-  const key = String(account.licenseKey || '');
-  if (account.role === 'owner' || key.startsWith('HELIX-AGENCY')) return { tier: account.role === 'owner' ? 'owner' : 'agency', limit: Infinity };
-  if (key.startsWith('HELIX-')) return { tier: 'pro', limit: 5 };
+  if (account.role === 'owner') return { tier: 'owner', limit: Infinity };
+  const ent = account.entitlement || {};
+  const active = ent.tier && (!ent.exp || ent.exp * 1000 > Date.now());
+  if (active && ent.tier === 'agency') return { tier: 'agency', limit: Infinity };
+  if (active && ent.tier === 'pro') return { tier: 'pro', limit: 5 };
   return { tier: 'free', limit: 1 };
 }
 

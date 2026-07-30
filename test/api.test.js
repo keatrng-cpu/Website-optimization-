@@ -1044,17 +1044,59 @@ test('seo auditor: measures decoded text, so "&" businesses are not penalized', 
   assert.ok(check.pass, `title-length must pass at 57 decoded chars (got: ${check.detail})`);
 });
 
+test('license: only the private key can mint a token the server accepts', async () => {
+  const crypto = await import('node:crypto');
+  const L = await import('../launch/site/netlify/functions/lib/license.js');
+  const { privateKey } = crypto.generateKeyPairSync('ed25519');
+  const priv = privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64');
+
+  const tok = L.mintLicense(priv, { email: 'Buyer@Example.com', tier: 'pro' });
+  const p = L.verifyWithPrivateEnv(tok, priv);
+  assert.equal(p.tier, 'pro');
+  assert.equal(p.sub, 'buyer@example.com', 'email normalized to lowercase');
+
+  // tamper the signature → rejected
+  assert.equal(L.verifyWithPrivateEnv(tok.slice(0, -2) + '00', priv), null);
+  // forged with a DIFFERENT key → rejected (the core un-forgeability property)
+  const { privateKey: other } = crypto.generateKeyPairSync('ed25519');
+  const forged = L.mintLicense(other.export({ type: 'pkcs8', format: 'der' }).toString('base64'), { email: 'x', tier: 'agency' });
+  assert.equal(L.verifyWithPrivateEnv(forged, priv), null, 'foreign-key token must not verify');
+  // expired → rejected; junk → rejected without throwing
+  assert.equal(L.verifyWithPrivateEnv(L.mintLicense(priv, { email: 'a', tier: 'pro', days: -1 }), priv), null);
+  assert.equal(L.verifyWithPrivateEnv('garbage', priv), null);
+  assert.equal(L.verifyWithPrivateEnv('', priv), null);
+});
+
+test('entitlement: verified plan unlocks limits; expiry and forgery downgrade to free', async () => {
+  const { planFor } = await import('../server/workspaces.js');
+  assert.equal(planFor({ entitlement: null }).limit, 1, 'no entitlement → free (1)');
+  assert.equal(planFor({ entitlement: { tier: 'pro', exp: Math.floor(Date.now()/1000) + 9999 } }).limit, 5, 'pro → 5');
+  assert.equal(planFor({ entitlement: { tier: 'agency' } }).limit, Infinity, 'agency → unlimited');
+  assert.equal(planFor({ entitlement: { tier: 'pro', exp: 1 } }).limit, 1, 'expired entitlement → free');
+  assert.equal(planFor({ role: 'owner' }).tier, 'owner', 'founder stays owner');
+
+  // account route: entitlement is only accepted for valid tiers, cleared on sign-out
+  await api('PUT', '/api/account', { name: 'Payer', email: 'payer@example.com' });
+  let acc = await api('PUT', '/api/account', { entitlement: { tier: 'pro', exp: Math.floor(Date.now()/1000) + 9999 } });
+  assert.equal(acc.data.entitlement.tier, 'pro');
+  assert.equal((await api('GET', '/api/workspaces')).data.plan.limit, 5, 'pro account can hold 5 businesses');
+  acc = await api('PUT', '/api/account', { entitlement: { tier: 'hacker' } });
+  assert.equal(acc.data.entitlement, null, 'invalid tier rejected');
+  acc = await api('PUT', '/api/account', { name: '', email: '' });
+  assert.equal(acc.data.entitlement, null, 'sign-out clears entitlement');
+});
+
 test('workspaces: plan limits and full data isolation between businesses', async () => {
   // free plan: 1 business, creation refused
-  await api('PUT', '/api/account', { name: 'Free User', email: 'free@example.com', licenseKey: '' });
+  await api('PUT', '/api/account', { name: 'Free User', email: 'free@example.com', licenseKey: '', entitlement: null });
   const list0 = await api('GET', '/api/workspaces');
   assert.equal(list0.data.plan.tier, 'free');
   assert.equal(list0.data.plan.limit, 1);
   const denied = await api('POST', '/api/workspaces', { name: 'Second' });
   assert.equal(denied.status, 402, 'free plan cannot create a second business');
 
-  // pro key: 5 businesses
-  await api('PUT', '/api/account', { licenseKey: 'HELIX-PRO-TEST' });
+  // verified Pro entitlement: 5 businesses
+  await api('PUT', '/api/account', { entitlement: { tier: 'pro', exp: Math.floor(Date.now()/1000) + 9999 } });
   assert.equal((await api('GET', '/api/workspaces')).data.plan.limit, 5);
 
   // founder: unlimited; create + switch and verify isolation

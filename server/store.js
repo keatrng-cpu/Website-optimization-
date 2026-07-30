@@ -32,7 +32,7 @@ const DEFAULTS = () => ({
   feedback: {},    // per-helper { up, down } reply-rating counters
   usageLog: [],    // bounded recent API-call metadata (never keys or bodies)
   agentRuns: [],   // { id, goal, mode, summary, steps, createdAt } — bounded 20
-  account: { name: '', email: '', company: '', licenseKey: '', role: 'member', createdAt: null },
+  account: { name: '', email: '', company: '', licenseKey: '', role: 'member', createdAt: null, entitlement: null },
   telemetry: { keys: {}, days: {} }, // action counts + active days (metadata only)
   workspaces: [],       // [{ id, name, createdAt, data }] — active one has data:null
   activeWorkspace: '',

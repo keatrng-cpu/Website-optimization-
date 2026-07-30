@@ -76,6 +76,63 @@ Tip: your Claude session has a **Stripe connector** available — authorize it i
 claude.ai connector settings and a session can create the products and payment
 links for you, then patch the placeholders itself.
 
+## Revenue engine — managed Pro (serverless)
+
+`launch/site/netlify/functions/` holds the paid-tier backend. It turns your
+live Stripe checkout into un-bypassable Pro access + metered managed AI,
+WITHOUT a database and without ever seeing a user's workspace:
+
+- **redeem-license** — a customer proves they paid (checkout link or email);
+  the function confirms an active Stripe subscription and mints an
+  Ed25519-signed license bound to their email + tier. It can only issue a
+  license for someone who actually paid.
+- **ai** — managed AI for Pro/Agency. It verifies the license signature
+  *before* spending a token of your Anthropic budget, injects the compliance
+  guardrails, auto-discovers the newest Sonnet, and caps output. No valid
+  license → no AI.
+- **verify-license** — authoritative status check, no AI spend.
+
+Design: the server is the only thing that can *mint* a license (it holds the
+private key); the app verifies. No user data ever touches the server, so the
+privacy story survives — the only thing gated is *your* managed compute.
+
+### One-time setup (in Netlify → your site → Environment variables)
+
+Set these four (they bind at deploy — re-deploy after adding them):
+
+| Variable | Value |
+|---|---|
+| `HELIX_LICENSE_KEY` | the private signing key I generated for you (paste the value I gave you in chat — **never commit it**) |
+| `STRIPE_SECRET_KEY` | your Stripe **secret** key (`sk_live_…`) from Stripe → Developers → API keys |
+| `ANTHROPIC_API_KEY` | your Anthropic API key (`sk-ant-…`) — this is the compute you're reselling as Pro |
+| *(optional)* | none — no webhook or database needed for v1 |
+
+### Stripe: make activation smooth
+In each payment link's *After payment* setting, redirect to
+`https://helixscales.netlify.app/success.html?session_id={CHECKOUT_SESSION_ID}`.
+The success page + Account "Activate Pro" pass that `session_id` (a secret only
+the buyer holds) to `redeem-license`, so activation is one click. Email-based
+activation also works as a fallback (any active subscriber).
+
+Price → tier mapping is by amount: **≥ $70/mo → Agency, ≥ $10/mo → Pro**
+(covers $19 founding, $24 Pro, $79 Agency). Adjust in
+`functions/lib/stripe.js` (`tierForAmount`) if you change prices.
+
+### How a customer activates
+Checkout → redirected to the success page → open the app → **Account →
+Activate Pro** → their plan unlocks (5 or unlimited workspaces + managed AI).
+Managed AI runs only on the hosted app; the installed/local app stays
+bring-your-own-key (a clean product line: hosted = managed, local = BYO).
+
+### Known v1 limitations (documented, not hidden)
+- Workspace *count* limit is enforced on the user's own device, so a
+  determined user could locally spoof it — but it unlocks nothing that costs
+  you money (managed AI/hosted value stays signature-gated server-side).
+- Email-based activation binds a license to an email; the more secure path is
+  the `session_id` from checkout. Both require a *real active* subscription.
+- License expiry is 400 days; renewal re-issues on next activation. A future
+  pass can add a Stripe webhook to auto-refresh and to revoke on cancellation.
+
 ## Founder Command Center (owner analytics)
 
 Sign in inside the app (Account) with the founder email
