@@ -20,6 +20,7 @@ import { learnFromMessage, recordFeedback, aiLearn, MEMORY_PROPOSAL_SYSTEM } fro
 import { aiPropose } from './ai.js';
 import { buildTickerStats, parseLabelLines, TICKER_SUGGEST_SYSTEM } from './stats.js';
 import { recordAction, telemetrySummary } from './telemetry.js';
+import { entitlementFromToken } from './license.js';
 import { ensureWorkspaces, listWorkspaces, createWorkspace, switchWorkspace, renameWorkspace, deleteWorkspace, planFor } from './workspaces.js';
 
 // Founder identities. Owner mode only ever exposes THIS device's own data —
@@ -719,15 +720,16 @@ export function createApp({ dataDir } = {}) {
     if (b.name !== undefined) a.name = clean(String(b.name), 80);
     if (b.email !== undefined) a.email = clean(String(b.email), 120);
     if (b.company !== undefined) a.company = clean(String(b.company), 120);
-    if (b.licenseKey !== undefined) a.licenseKey = clean(String(b.licenseKey), 1200); // holds a signed license token
-    // Entitlement is set only from a successful gateway redeem (tier/exp).
-    if (b.entitlement !== undefined) {
-      a.entitlement = (b.entitlement && ['pro', 'agency'].includes(b.entitlement.tier))
-        ? { tier: b.entitlement.tier, exp: Number(b.entitlement.exp) || null, verifiedAt: Date.now() }
-        : null;
+    // Entitlement is DERIVED from the signed license token (verified with the
+    // embedded public key) — never taken from a client-asserted object.
+    if (b.licenseKey !== undefined) {
+      a.licenseKey = clean(String(b.licenseKey), 1200);
+      const ent = entitlementFromToken(a.licenseKey);
+      a.entitlement = ent ? { ...ent, verifiedAt: Date.now() } : null;
     }
+    if (b.proSession !== undefined) a.proSession = clean(String(b.proSession), 120); // for silent re-redeem
     if (a.name && !a.createdAt) a.createdAt = Date.now();
-    if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; a.entitlement = null; } // sign-out clears
+    if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; a.entitlement = null; a.proSession = ''; } // sign-out clears
     // Role is derived, never client-set: founder email or founder key unlocks owner.
     a.role = (FOUNDER_EMAILS.includes(a.email.toLowerCase()) || a.licenseKey.startsWith(FOUNDER_KEY_PREFIX)) ? 'owner' : 'member';
     store.save();

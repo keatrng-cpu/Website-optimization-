@@ -43,8 +43,16 @@
       <div class="step"><div class="n">2</div><div><b>Watch your inbox</b><span>Your Stripe receipt arrives now; your Pro activation follows — founding members are switched on first.</span></div></div>
       <div class="step"><div class="n">3</div><div><b>Keep building meanwhile</b><span>Everything in the free app is already yours — your data lives on your device and nothing waits on us.</span></div></div>
     </div>
-    <a class="btn" href="/app.html#/account">⬢ Open HELIX → Account</a>
+    <a class="btn" id="openApp" href="/app.html#/account">⬢ Open HELIX → Account</a>
     <p class="fine">Questions or a billing issue? Reply to your Stripe receipt email and we'll take care of it. <a href="/">Back to home</a></p>
   </div>
+  <script>
+    // Carry the checkout session into the app so Pro activates automatically.
+    // Stripe redirects here with ?session_id={CHECKOUT_SESSION_ID}.
+    (function () {
+      var m = location.search.match(/session_id=([^&]+)/);
+      if (m) document.getElementById('openApp').href = '/app.html#/account?session=' + encodeURIComponent(m[1]);
+    })();
+  </script>
 </body>
 </html>

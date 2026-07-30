@@ -1,16 +1,19 @@
-// POST /.netlify/functions/redeem-license
-// Body: { session_id } (preferred, from the checkout redirect) OR { email }.
-// Confirms a real paid subscription via Stripe, then mints a signed HELIX
-// license bound to that email + tier. This is a minting ORACLE gated by
-// Stripe — it can only issue a license for someone who actually paid.
+// POST /.netlify/functions/redeem-license   { session_id }
+// The session_id is a secret only the buyer receives at the checkout redirect.
+// We confirm it is genuinely PAID with an ACTIVE subscription, then mint a
+// short-lived, signed HELIX license bound to that email + tier + subscription.
+// There is deliberately NO email-based path: an email is not a secret, so
+// minting from it alone would let anyone spend the operator's AI budget.
 //
-// Graceful degradation: any missing config or upstream hiccup returns 200 with
-// { ok:false, reason } so the app shows a friendly message, never a crash.
+// Graceful degradation: missing config / bad input / upstream hiccup / timeout
+// all return 200 with { ok:false, reason } — never a crash or a 5xx.
 import { mintLicense } from './lib/license.js';
-import { tierFromSession, tierFromEmail } from './lib/stripe.js';
+import { tierFromSession } from './lib/stripe.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'POST, OPTIONS' };
 const ok = (data) => new Response(JSON.stringify(data), { status: 200, headers: JSON_HEADERS });
+const HANDLER_BUDGET_MS = 8000;
+const TOKEN_DAYS = 3; // short life → cancellation/refund revokes within days (client re-redeems while active)
 
 export default async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: JSON_HEADERS });
@@ -23,22 +26,23 @@ export default async (req) => {
   }
 
   let body = {};
-  try { body = await req.json(); } catch { /* empty */ }
-  const sessionId = typeof body.session_id === 'string' ? body.session_id.slice(0, 200) : '';
-  const email = typeof body.email === 'string' ? body.email.slice(0, 200).trim() : '';
-  if (!sessionId && !email) return ok({ ok: false, reason: 'Provide your checkout link or the email you paid with.' });
+  try { body = await req.json(); } catch { /* empty body */ }
+  const raw = typeof body.session_id === 'string' ? body.session_id.trim().slice(0, 120) : '';
+  // Accept only a Stripe checkout-session id shape; reject anything else early.
+  const sessionId = /^cs_[A-Za-z0-9_]+$/.test(raw) ? raw : '';
+  if (!sessionId) return ok({ ok: false, reason: 'Open HELIX from your checkout confirmation to activate — we need the secure link, not just an email.' });
 
+  // Hard time budget: never let a slow Stripe call blow the function timeout.
+  const budget = new Promise((resolve) => setTimeout(() => resolve('__timeout__'), HANDLER_BUDGET_MS));
   try {
-    // session_id is a secret only the buyer holds — prefer it.
-    const found = sessionId ? await tierFromSession(sessionId, STRIPE_KEY)
-                            : await tierFromEmail(email, STRIPE_KEY);
+    const found = await Promise.race([tierFromSession(sessionId, STRIPE_KEY), budget]);
+    if (found === '__timeout__') return ok({ ok: false, reason: 'Could not verify right now — please retry shortly.' });
     if (!found || !found.tier) {
-      return ok({ ok: false, reason: 'No active HELIX subscription found for that. If you just paid, give it a minute and retry.' });
+      return ok({ ok: false, reason: 'No active paid HELIX subscription on that checkout. If you just paid, give it a minute and retry.' });
     }
-    const license = mintLicense(LICENSE_KEY, { email: found.email || email, tier: found.tier });
-    return ok({ ok: true, license, tier: found.tier, email: found.email || email });
-  } catch (e) {
-    // Never leak internals; never hard-fail.
+    const license = mintLicense(LICENSE_KEY, { email: found.email, tier: found.tier, sub: found.sub, days: TOKEN_DAYS });
+    return ok({ ok: true, license, tier: found.tier });
+  } catch {
     return ok({ ok: false, reason: 'Could not verify with Stripe right now — please retry shortly.' });
   }
 };

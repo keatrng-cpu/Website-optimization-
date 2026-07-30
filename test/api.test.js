@@ -5,7 +5,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { createApp } from '../server/index.js';
+
+// Throwaway license keypair for tests: set the server's public-key override so
+// it verifies tokens we mint here — the real private key never touches the repo.
+const _kp = crypto.generateKeyPairSync('ed25519');
+const TEST_PRIV_B64 = _kp.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64');
+process.env.HELIX_LICENSE_PUBLIC = _kp.publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
 
 let server, base, dataDir;
 
@@ -1053,7 +1060,7 @@ test('license: only the private key can mint a token the server accepts', async 
   const tok = L.mintLicense(priv, { email: 'Buyer@Example.com', tier: 'pro' });
   const p = L.verifyWithPrivateEnv(tok, priv);
   assert.equal(p.tier, 'pro');
-  assert.equal(p.sub, 'buyer@example.com', 'email normalized to lowercase');
+  assert.equal(p.email, 'buyer@example.com', 'email normalized to lowercase');
 
   // tamper the signature → rejected
   assert.equal(L.verifyWithPrivateEnv(tok.slice(0, -2) + '00', priv), null);
@@ -1075,13 +1082,28 @@ test('entitlement: verified plan unlocks limits; expiry and forgery downgrade to
   assert.equal(planFor({ entitlement: { tier: 'pro', exp: 1 } }).limit, 1, 'expired entitlement → free');
   assert.equal(planFor({ role: 'owner' }).tier, 'owner', 'founder stays owner');
 
-  // account route: entitlement is only accepted for valid tiers, cleared on sign-out
+  // account route: entitlement is DERIVED from a verified signed token, never
+  // client-asserted. A real token (signed by the test key) unlocks Pro; a
+  // forged/foreign token or a bare tier claim is ignored.
+  const L = await import('../launch/site/netlify/functions/lib/license.js');
   await api('PUT', '/api/account', { name: 'Payer', email: 'payer@example.com' });
-  let acc = await api('PUT', '/api/account', { entitlement: { tier: 'pro', exp: Math.floor(Date.now()/1000) + 9999 } });
-  assert.equal(acc.data.entitlement.tier, 'pro');
+
+  // a client-asserted entitlement object is IGNORED (the critical invariant)
+  let acc = await api('PUT', '/api/account', { entitlement: { tier: 'agency', exp: 9999999999 } });
+  assert.equal(acc.data.entitlement, null, 'client-asserted entitlement must be ignored');
+
+  // a real signed token unlocks the tier it carries
+  const proToken = L.mintLicense(TEST_PRIV_B64, { email: 'payer@example.com', tier: 'pro' });
+  acc = await api('PUT', '/api/account', { licenseKey: proToken });
+  assert.equal(acc.data.entitlement?.tier, 'pro', 'verified token grants pro');
   assert.equal((await api('GET', '/api/workspaces')).data.plan.limit, 5, 'pro account can hold 5 businesses');
-  acc = await api('PUT', '/api/account', { entitlement: { tier: 'hacker' } });
-  assert.equal(acc.data.entitlement, null, 'invalid tier rejected');
+
+  // a token signed by a DIFFERENT key is rejected → no entitlement
+  const otherKp = crypto.generateKeyPairSync('ed25519');
+  const forged = L.mintLicense(otherKp.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64'), { email: 'payer@example.com', tier: 'agency' });
+  acc = await api('PUT', '/api/account', { licenseKey: forged });
+  assert.equal(acc.data.entitlement, null, 'foreign-signed token grants nothing');
+
   acc = await api('PUT', '/api/account', { name: '', email: '' });
   assert.equal(acc.data.entitlement, null, 'sign-out clears entitlement');
 });
@@ -1095,8 +1117,9 @@ test('workspaces: plan limits and full data isolation between businesses', async
   const denied = await api('POST', '/api/workspaces', { name: 'Second' });
   assert.equal(denied.status, 402, 'free plan cannot create a second business');
 
-  // verified Pro entitlement: 5 businesses
-  await api('PUT', '/api/account', { entitlement: { tier: 'pro', exp: Math.floor(Date.now()/1000) + 9999 } });
+  // verified Pro entitlement (real signed token): 5 businesses
+  const Lw = await import('../launch/site/netlify/functions/lib/license.js');
+  await api('PUT', '/api/account', { licenseKey: Lw.mintLicense(TEST_PRIV_B64, { email: 'free@example.com', tier: 'pro' }) });
   assert.equal((await api('GET', '/api/workspaces')).data.plan.limit, 5);
 
   // founder: unlimited; create + switch and verify isolation

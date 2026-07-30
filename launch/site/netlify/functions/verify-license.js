@@ -15,5 +15,5 @@ export default async (req) => {
   try { body = await req.json(); } catch { /* empty */ }
   const payload = verifyWithPrivateEnv(String(body.license || ''), LICENSE_KEY);
   if (!payload) return ok({ valid: false });
-  return ok({ valid: true, tier: payload.tier, email: payload.sub, exp: payload.exp });
+  return ok({ valid: true, tier: payload.tier, email: payload.email || payload.sub, exp: payload.exp });
 };

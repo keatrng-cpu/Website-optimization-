@@ -1690,9 +1690,8 @@ routes.account = async (main) => {
         ${entActive
           ? `<p class="muted" style="margin:8px 0;font-size:13px">Your <b>${esc(ent.tier)}</b> plan is verified${ent.exp ? ` (renews around ${new Date(ent.exp * 1000).toLocaleDateString()})` : ''}. Managed AI, ${ent.tier === 'agency' ? 'unlimited' : '5'} business workspaces, and hosted features are unlocked.</p>
              <div style="margin-top:10px"><button class="btn ghost" id="acDeactivate">Deactivate on this device</button></div>`
-          : `<p class="muted" style="margin:8px 0;font-size:13px">Bought Pro or Agency? Activate it here — no key to copy. Use the email you paid with, or paste your checkout confirmation link.</p>
-             <label>Checkout email</label><input id="acEmail2" type="email" placeholder="the email you paid with" value="${esc(acct.email || '')}">
-             <label>…or checkout link <span class="dim">(more secure — from your confirmation)</span></label><input id="acSession" placeholder="https://…checkout…?session_id=cs_…">
+          : `<p class="muted" style="margin:8px 0;font-size:13px">Bought Pro or Agency? Activate from your <b>checkout confirmation</b> — no key to copy. Open the confirmation link and it activates automatically; or paste it below.</p>
+             <label>Checkout confirmation link</label><input id="acSession" placeholder="https://…?session_id=cs_…">
              <div class="row" style="margin-top:12px;gap:8px"><button class="btn" id="acActivate">⬢ Activate my plan</button></div>
              <p class="dim" style="margin-top:10px" id="acActMsg">No plan yet? <a href="/#pricing" target="_blank">See plans</a> — the free tier stays fully yours either way.</p>`}
       </div>
@@ -1780,41 +1779,48 @@ routes.account = async (main) => {
   // ----- Activate Pro: Stripe-gated redeem via the deployed gateway function -----
   const GW = (location.protocol.startsWith('http') && !/^(localhost|127|0\.0\.0\.0)/.test(location.hostname))
     ? '' : null; // '' = same-origin functions (hosted). null = no gateway here.
-  function decodeExp(token) {
-    try { const p = JSON.parse(atob(String(token).split('.')[0].replace(/-/g, '+').replace(/_/g, '/'))); return p.exp || null; }
-    catch { return null; }
+  // Redeem a checkout session_id at the gateway; the server derives entitlement
+  // from the returned signed token. Stores the session for silent re-redeem.
+  async function redeem(session_id, msgEl) {
+    if (GW === null) { if (msgEl) msgEl.innerHTML = '⚠️ Activation runs on the hosted app — open <a href="https://helixscales.netlify.app/app#/account" target="_blank">helixscales.netlify.app</a> and activate there.'; return false; }
+    const r = await fetch(GW + '/.netlify/functions/redeem-license', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id }),
+    });
+    const d = await r.json();
+    if (!d.ok) { if (msgEl) msgEl.textContent = d.reason || 'Could not verify — please retry.'; return false; }
+    await api('PUT', '/api/account', { licenseKey: d.license, proSession: session_id });
+    return d.tier;
   }
   const act = $('#acActivate', main);
   if (act) act.onclick = async () => {
-    const email = $('#acEmail2', main).value.trim();
-    const sessLink = $('#acSession', main).value.trim();
+    const link = $('#acSession', main).value.trim();
     const msg = $('#acActMsg', main);
-    const session_id = (sessLink.match(/session_id=([^&\s]+)/) || [])[1] || (sessLink.startsWith('cs_') ? sessLink : '');
-    if (!email && !session_id) { toast('Enter your checkout email or link', true); return; }
-    if (GW === null) { msg.innerHTML = '⚠️ Activation runs on the hosted app — open <a href="https://helixscales.netlify.app/app#/account" target="_blank">helixscales.netlify.app</a> and activate there.'; return; }
+    const session_id = (link.match(/session_id=([^&\s]+)/) || [])[1] || (/^cs_[\w]+$/.test(link) ? link : '');
+    if (!session_id) { msg.textContent = 'Paste the full checkout confirmation link (it contains a session_id).'; return; }
     act.disabled = true; act.textContent = '⏳ Verifying with Stripe…';
-    try {
-      const r = await fetch(GW + '/.netlify/functions/redeem-license', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(session_id ? { session_id } : { email }),
-      });
-      const d = await r.json();
-      if (!d.ok) { msg.textContent = d.reason || 'Could not verify — please retry.'; act.disabled = false; act.textContent = '⬢ Activate my plan'; return; }
-      await api('PUT', '/api/account', { licenseKey: d.license, entitlement: { tier: d.tier, exp: decodeExp(d.license) } });
-      toast(`✅ ${d.tier} activated — welcome to managed HELIX`);
-      await loadBoot();
-      navigate();
-    } catch {
-      msg.textContent = 'Activation needs the hosted app (the gateway lives there). Try helixscales.netlify.app.';
-      act.disabled = false; act.textContent = '⬢ Activate my plan';
-    }
+    const tier = await redeem(session_id, msg).catch(() => { msg.textContent = 'Activation needs the hosted app (helixscales.netlify.app).'; return false; });
+    if (tier) { toast(`✅ ${tier} activated — welcome to managed HELIX`); await loadBoot(); navigate(); }
+    else { act.disabled = false; act.textContent = '⬢ Activate my plan'; }
   };
   const deact = $('#acDeactivate', main);
   if (deact) deact.onclick = async () => {
-    await api('PUT', '/api/account', { licenseKey: '', entitlement: null });
+    await api('PUT', '/api/account', { licenseKey: '' });
     toast('Deactivated on this device');
     await loadBoot(); navigate();
   };
+
+  // Auto-activate: if we arrived from the checkout handoff (?session=cs_…) or
+  // have a stored session, silently redeem — this also re-checks live Stripe
+  // status, so a cancelled/refunded subscription lapses within the token life.
+  const fromHash = (location.hash.match(/[?&]session=([^&\s]+)/) || [])[1];
+  const stored = acct.proSession;
+  const auto = fromHash || (!entActive && stored) || (entActive && stored);
+  if (auto && GW !== null) {
+    redeem(fromHash || stored).then((tier) => {
+      if (tier) { loadBoot().then(navigate); }
+    }).catch(() => {});
+  }
 };
 
 routes.quickstart = async (main) => {

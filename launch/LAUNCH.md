@@ -107,31 +107,43 @@ Set these four (they bind at deploy — re-deploy after adding them):
 | `ANTHROPIC_API_KEY` | your Anthropic API key (`sk-ant-…`) — this is the compute you're reselling as Pro |
 | *(optional)* | none — no webhook or database needed for v1 |
 
-### Stripe: make activation smooth
+### Stripe: make activation automatic (REQUIRED)
 In each payment link's *After payment* setting, redirect to
 `https://helixscales.netlify.app/success.html?session_id={CHECKOUT_SESSION_ID}`.
-The success page + Account "Activate Pro" pass that `session_id` (a secret only
-the buyer holds) to `redeem-license`, so activation is one click. Email-based
-activation also works as a fallback (any active subscriber).
+The success page carries that `session_id` (a secret only the buyer receives)
+into the app, which auto-activates. **This redirect is the only activation
+path** — there is deliberately no "activate by email," because an email is not
+a secret and would let anyone mint a license on your Anthropic budget. If you
+skip the redirect, buyers can still paste their confirmation link into
+Account → Activate Pro.
 
-Price → tier mapping is by amount: **≥ $70/mo → Agency, ≥ $10/mo → Pro**
-(covers $19 founding, $24 Pro, $79 Agency). Adjust in
+Price → tier mapping is by amount actually paid: **≥ $70/mo → Agency,
+≥ $10/mo → Pro** (covers $19 founding, $24 Pro, $79 Agency). Adjust in
 `functions/lib/stripe.js` (`tierForAmount`) if you change prices.
 
 ### How a customer activates
-Checkout → redirected to the success page → open the app → **Account →
-Activate Pro** → their plan unlocks (5 or unlimited workspaces + managed AI).
-Managed AI runs only on the hosted app; the installed/local app stays
-bring-your-own-key (a clean product line: hosted = managed, local = BYO).
+Checkout → redirected to the success page → "Open HELIX" → the app
+auto-redeems the session and unlocks their plan (5 or unlimited workspaces +
+managed AI). Managed AI runs only on the hosted app; the installed/local app
+stays bring-your-own-key (a clean product line: hosted = managed, local = BYO).
 
-### Known v1 limitations (documented, not hidden)
-- Workspace *count* limit is enforced on the user's own device, so a
-  determined user could locally spoof it — but it unlocks nothing that costs
-  you money (managed AI/hosted value stays signature-gated server-side).
-- Email-based activation binds a license to an email; the more secure path is
-  the `session_id` from checkout. Both require a *real active* subscription.
-- License expiry is 400 days; renewal re-issues on next activation. A future
-  pass can add a Stripe webhook to auto-refresh and to revoke on cancellation.
+### Security model (hardened after an adversarial audit)
+- **Redemption requires a paid, active Stripe checkout session** — not an
+  email. Unpaid/trialing/coupon/canceled subscriptions mint nothing.
+- **Licenses are short-lived (3 days).** The app silently re-redeems while the
+  subscription stays active, so a cancellation or refund revokes managed-AI
+  access within days — no separate webhook needed for v1.
+- **The AI proxy verifies the signed license before spending a token**, injects
+  compliance guardrails that client input cannot override (guardrails are the
+  only thing in the system role; caller context is demoted to labelled data;
+  forged assistant turns are dropped), and caps output.
+- **Entitlement is derived from the verified token**, never a client claim —
+  the installed server checks the Ed25519 signature with an embedded public
+  key. (On the hosted browser app the workspace-*count* gate is best-effort
+  local; it unlocks nothing that costs you money — managed AI stays
+  signature-gated server-side.)
+- Fast-follow (not blocking launch): a Stripe webhook to auto-refresh/revoke,
+  and a per-license usage quota, both need a small state store (Netlify Blobs).
 
 ## Founder Command Center (owner analytics)
 

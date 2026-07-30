@@ -194,6 +194,20 @@ function previewHTML(idOrSlug) {
 
 // ---- the API router ----
 const FOUNDER_EMAILS = ['luxeforgeio@gmail.com'];
+
+// Decode a license token's payload (tier/exp) for the local workspace-count
+// gate. No signature verification in-browser — the AI-spend gate is verified
+// server-side in the /ai function, which is where real money is protected.
+function entitlementFromTokenLocal(token) {
+  try {
+    const body = String(token || '').split('.')[0];
+    if (!body) return null;
+    const p = JSON.parse(atob(body.replace(/-/g, '+').replace(/_/g, '/')));
+    if (!p || !['pro', 'agency'].includes(p.tier)) return null;
+    if (p.exp && Math.floor(Date.now() / 1000) > p.exp) return null;
+    return { tier: p.tier, exp: p.exp || null, verifiedAt: Date.now() };
+  } catch { return null; }
+}
 const FOUNDER_KEY_PREFIX = 'HELIX-FOUNDER-';
 
 async function handle(method, pathname, query, body) {
@@ -752,14 +766,17 @@ async function handle(method, pathname, query, body) {
         if (body.name !== undefined) a.name = clean(String(body.name), 80);
         if (body.email !== undefined) a.email = clean(String(body.email), 120);
         if (body.company !== undefined) a.company = clean(String(body.company), 120);
-        if (body.licenseKey !== undefined) a.licenseKey = clean(String(body.licenseKey), 1200);
-        if (body.entitlement !== undefined) {
-          a.entitlement = (body.entitlement && ['pro', 'agency'].includes(body.entitlement.tier))
-            ? { tier: body.entitlement.tier, exp: Number(body.entitlement.exp) || null, verifiedAt: Date.now() }
-            : null;
+        // Entitlement derived from the signed token payload (tier/exp). The
+        // browser can't verify the Ed25519 signature, so this local gate only
+        // controls workspace COUNT; managed-AI spend is signature-verified in
+        // the /ai function regardless, which is the money-protecting gate.
+        if (body.licenseKey !== undefined) {
+          a.licenseKey = clean(String(body.licenseKey), 1200);
+          a.entitlement = entitlementFromTokenLocal(a.licenseKey);
         }
+        if (body.proSession !== undefined) a.proSession = clean(String(body.proSession), 120);
         if (a.name && !a.createdAt) a.createdAt = Date.now();
-        if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; a.entitlement = null; }
+        if (!a.name && !a.email) { a.licenseKey = ''; a.company = ''; a.createdAt = null; a.entitlement = null; a.proSession = ''; }
         a.role = (FOUNDER_EMAILS.includes(a.email.toLowerCase()) || a.licenseKey.startsWith(FOUNDER_KEY_PREFIX)) ? 'owner' : 'member';
         save();
         return ok(a);

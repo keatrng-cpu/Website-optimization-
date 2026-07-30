@@ -22,11 +22,15 @@ export function publicKeyFromPrivate(priv) {
   return crypto.createPublicKey(priv);
 }
 
-// Mint a signed license. days sets the expiry window.
-export function mintLicense(privateKeyB64, { email, tier, days = 400 }) {
+// Mint a signed license. Short-lived by design: the client re-redeems against
+// live Stripe status while the subscription is active, so cancellation/refund
+// revokes access within `days`. `sub` binds it to the Stripe subscription;
+// `jti` is a unique id for future deny-list revocation.
+export function mintLicense(privateKeyB64, { email, tier, days = 3, sub = null }) {
   const priv = privateKeyFrom(privateKeyB64);
   const now = Math.floor(Date.now() / 1000);
-  const payload = { sub: String(email).toLowerCase(), tier, iat: now, exp: now + days * 86400, v: 1 };
+  const jti = crypto.randomBytes(8).toString('hex');
+  const payload = { email: String(email).toLowerCase(), tier, iat: now, exp: now + days * 86400, sub, jti, v: 2 };
   const body = b64url(JSON.stringify(payload));
   const sig = crypto.sign(null, Buffer.from(body), priv);
   return body + '.' + b64url(sig);

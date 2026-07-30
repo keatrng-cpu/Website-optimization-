@@ -1,9 +1,9 @@
 // Minimal Stripe REST reads (zero-dependency). Server-side only.
-// We never write to Stripe here — Stripe is the source of truth we READ to
-// decide entitlement. Every call is time-bounded so a slow upstream degrades.
+// Stripe is the source of truth we READ to decide entitlement — we never write.
+// Every call is time-bounded so a slow upstream degrades instead of hanging.
 const API = 'https://api.stripe.com/v1';
 
-async function get(path, key, ms = 6000) {
+async function get(path, key, ms = 4500) {
   const r = await fetch(API + path, {
     headers: { authorization: `Bearer ${key}` },
     signal: AbortSignal.timeout(ms),
@@ -12,7 +12,7 @@ async function get(path, key, ms = 6000) {
   return r.json();
 }
 
-// Map a subscription's price to a HELIX tier. Amounts in cents.
+// Map an amount ACTUALLY PAID (cents) to a HELIX tier.
 export function tierForAmount(cents) {
   if (cents == null) return null;
   if (cents >= 7000) return 'agency';   // $79
@@ -20,28 +20,22 @@ export function tierForAmount(cents) {
   return null;
 }
 
-function tierFromSubscription(sub) {
-  const amount = sub?.items?.data?.[0]?.price?.unit_amount;
-  return tierForAmount(amount);
-}
-
-// Preferred, secure path: a checkout session_id (a secret only the buyer holds).
+// The ONLY redemption path: a checkout session_id — a secret only the buyer
+// receives at the checkout redirect. Requires the session to be genuinely
+// PAID and the subscription ACTIVE, and grades the tier by money that changed
+// hands (amount_total), not the price object's list amount.
 export async function tierFromSession(sessionId, key) {
-  const s = await get(`/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=subscription.items.data.price`, key);
-  if (s.payment_status !== 'paid' && s.status !== 'complete') return null;
+  const s = await get(
+    `/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=subscription`,
+    key,
+  );
+  const paid = s.payment_status === 'paid';
+  const subActive = !s.subscription || s.subscription.status === 'active';
+  if (!paid || !subActive) return null;
   const email = (s.customer_details?.email || s.customer_email || '').toLowerCase();
-  const tier = tierFromSubscription(s.subscription) || tierForAmount(s.amount_total);
-  return tier ? { email, tier } : null;
-}
-
-// Convenience path: an email with a CURRENTLY-ACTIVE subscription.
-export async function tierFromEmail(email, key) {
-  const custs = await get(`/customers?email=${encodeURIComponent(String(email).toLowerCase())}&limit=10`, key);
-  for (const c of custs.data || []) {
-    const subs = await get(`/subscriptions?customer=${c.id}&status=active&limit=1&expand[]=data.items.data.price`, key);
-    const sub = subs.data?.[0];
-    const tier = sub && tierFromSubscription(sub);
-    if (tier) return { email: String(email).toLowerCase(), tier };
-  }
-  return null;
+  const tier = tierForAmount(s.amount_total);
+  if (!tier) return null;
+  // Bind the license to the paying subscription so it can be re-validated/revoked.
+  const sub = typeof s.subscription === 'object' ? s.subscription.id : s.subscription;
+  return { email, tier, sub: sub || null };
 }
