@@ -2,8 +2,9 @@
 name: ci
 on:
   pull_request:
+    branches: [claude/sintra-local-app-rebuild-x7do9h]
   push:
-    branches: [main]
+    branches: [claude/sintra-local-app-rebuild-x7do9h]
 permissions:
   contents: read
 concurrency:
