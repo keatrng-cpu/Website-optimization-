@@ -2,3 +2,5 @@ node_modules/
 data/
 *.log
 .DS_Store
+ai/.sessions.log
+graphify-out/.post-commit.log
